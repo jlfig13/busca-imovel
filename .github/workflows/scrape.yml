@@ -1,0 +1,69 @@
+name: Monitor de Apartamentos
+
+# Roda 1x por semana (segunda 09:00 BRT = 12:00 UTC) + permite disparo manual
+# pela aba Actions. Faz a raspagem, persiste o banco de volta no repo (pra
+# manter histórico de preço/"visto pela primeira vez" entre rodadas) e
+# publica o dashboard no GitHub Pages.
+on:
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Rodar o monitor
+        run: python main.py
+
+      - name: Persistir banco/planilha no repositório
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add saida/apartamentos.db saida/apartamentos.xlsx
+          git diff --staged --quiet && echo "Sem mudanças pra commitar" || git commit -m "chore: atualiza dados da rodada semanal [skip ci]"
+          git push
+
+      - name: Preparar artefato do Pages
+        run: |
+          mkdir -p _site
+          cp saida/dashboard.html _site/index.html
+
+      - name: Upload do artefato do Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  publicar:
+    needs: scrape
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Gerados a cada rodada -- dashboard.html é artefato de build do Pages
+# (não precisa de histórico no git) e o log é só depuração local.
+saida/dashboard.html
+saida/scraper.log
+
+# apartamentos.db e apartamentos.xlsx SÃO versionados de propósito: é como
+# o histórico de preço/"primeiro visto" sobrevive entre rodadas semanais
+# do GitHub Actions (ver .github/workflows/scrape.yml).
+
+_site/
+.venv/
+venv/
+
+# estado local do assistente, não é parte do projeto
+.claude/
