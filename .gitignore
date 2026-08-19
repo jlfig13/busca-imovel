@@ -15,5 +15,8 @@ _site/
 .venv/
 venv/
 
-# estado local do assistente, não é parte do projeto
-.claude/
+# estado local do assistente, não é parte do projeto -- MENOS o progresso,
+# que é onde a sessão seguinte (ou outra máquina) descobre onde o trabalho
+# parou. Sem a exceção, current.md só existiria neste computador.
+.claude/*
+!.claude/progress/
