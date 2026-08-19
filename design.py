@@ -77,10 +77,11 @@ CSS_TOKENS = """
   --foco:#1B6B84;
   --sombra:0 1px 2px rgba(21,25,28,.05), 0 1px 8px rgba(21,25,28,.04);
 
-  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,'Helvetica Neue',Arial,sans-serif;
+  --sans:'Inter','Inter var',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
   --mono:ui-monospace,'SF Mono','Cascadia Mono','Segoe UI Mono',Menlo,Consolas,monospace;
 
   --r:6px;
+  --r-card:14px;
   --gap:16px;
 }
 
@@ -143,6 +144,7 @@ body{
   margin:0; background:var(--fundo); color:var(--tinta);
   font-family:var(--sans); font-size:15px; line-height:1.5;
   -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  -webkit-tap-highlight-color:transparent;
 }
 a{color:inherit;}
 :focus-visible{outline:2px solid var(--foco); outline-offset:2px; border-radius:3px;}
@@ -154,6 +156,7 @@ a{color:inherit;}
 .topo{
   position:sticky; top:0; z-index:20;
   background:color-mix(in srgb, var(--fundo) 88%, transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(12px);
   backdrop-filter:saturate(180%) blur(12px);
   border-bottom:1px solid var(--linha);
   padding:0 24px;
@@ -259,127 +262,170 @@ a{color:inherit;}
   padding:12px 0 4px; letter-spacing:.02em;
 }
 
-/* ---------- lista de imóveis ---------- */
-/* Sem caixas: divisor de 1px e fundo no hover. Caixa dentro de caixa é o
-   visual de dashboard corporativo que a direção pede para evitar.
+/* ---------- catálogo ---------- */
+/* Card fechado, no espírito dos portais (Zap/Viva Real): foto, dados,
+   preço e ação dentro de uma caixa com borda e sombra. A versão anterior
+   separava os imóveis só por um divisor de 1px -- lia como jornal e, no
+   celular, não dava para dizer onde um anúncio terminava e o outro
+   começava. Borda + sombra + espaço entre cards resolvem isso sem cor. */
+.lista{display:grid; gap:16px; padding-top:4px;}
 
-   Flex (e não grid com row-span) porque row-span estica as linhas até a
-   altura da coluna do preço, criando um vão vertical enorme entre os
-   imóveis -- o oposto do ritmo compacto que a referência (Linear) pede. */
 .imovel{
-  display:flex; align-items:flex-start; gap:24px;
-  padding:14px 12px; margin:0 -12px;
-  border-bottom:1px solid var(--linha); border-radius:var(--r);
+  display:grid; grid-template-columns:232px 1fr;
+  background:var(--fundo); border:1px solid var(--linha);
+  border-radius:var(--r-card); overflow:hidden; box-shadow:var(--sombra);
+  transition:box-shadow .16s ease, border-color .16s ease;
 }
-.imovel:hover{background:var(--superficie);}
-.imovel.abrivel{cursor:pointer;}
-.imovel-corpo{flex:1; min-width:0;}
-.imovel-lado{
-  display:flex; flex-direction:column; align-items:flex-end; gap:5px;
-  flex-shrink:0; text-align:right;
+.imovel:hover{
+  border-color:var(--linha-forte);
+  box-shadow:0 2px 4px rgba(21,25,28,.06), 0 10px 28px rgba(21,25,28,.08);
 }
 
-.imovel-cab{display:flex; align-items:center; gap:8px; min-width:0;}
-.seta{
-  width:10px; flex-shrink:0; color:var(--tinta-fraca); font-size:9px;
-  transition:transform .15s ease;
+/* Foto: 4:3 no desktop, 16:10 no celular. object-fit evita distorcer o que
+   cada portal entrega em proporção diferente. */
+.foto{position:relative; background:var(--superficie-2); aspect-ratio:4/3;}
+.foto img{width:100%; height:100%; object-fit:cover; display:block;}
+.foto-vazia{
+  position:absolute; inset:0; display:grid; place-items:center;
+  color:var(--tinta-fraca);
 }
-.imovel[aria-expanded="true"] .seta{transform:rotate(90deg);}
+.foto-vazia svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.4;}
+/* Selos de ação sobre a foto -- é o que o olho procura primeiro na grade. */
+.foto-selos{
+  position:absolute; top:9px; left:9px; right:9px;
+  display:flex; flex-wrap:wrap; gap:5px;
+}
+
+.imovel-corpo{
+  padding:14px 16px 14px; display:flex; flex-direction:column;
+  gap:6px; min-width:0;
+}
+.imovel-cab{display:flex; align-items:flex-start; gap:8px; min-width:0;}
 .imovel-titulo{
-  font-size:15.5px; font-weight:590; letter-spacing:-.012em; margin:0;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:16px; font-weight:600; letter-spacing:-.014em; margin:0;
+  line-height:1.35; display:-webkit-box; -webkit-line-clamp:2;
+  -webkit-box-orient:vertical; overflow:hidden;
 }
 .imovel-local{
-  color:var(--tinta-suave); font-size:12.5px; margin-top:3px;
-  display:flex; align-items:center; gap:5px; min-width:0;
+  color:var(--tinta-suave); font-size:12.5px;
+  display:flex; align-items:center; gap:5px; min-width:0; flex-wrap:wrap;
 }
 .imovel-local svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.7;flex-shrink:0;}
 .imovel-local .rua{color:var(--tinta-fraca);}
-/* nome específico de propósito: '.vazio' genérico colidia com o
-   estado-vazio da lista (padding 64px) e inflava a linha do endereço */
 .imovel-local .rua-ausente{font-style:italic; opacity:.7;}
 
-/* Ficha técnica em linha: números tabulares, separador discreto. */
-.ficha{
-  display:flex; flex-wrap:wrap; gap:0 0;
-  font-size:12.5px; color:var(--tinta-media); margin-top:5px;
-}
+/* Ficha técnica: pastilhas, não texto corrido -- é o padrão que o olho já
+   conhece dos portais e sobrevive melhor à quebra de linha no celular. */
+.ficha{display:flex; flex-wrap:wrap; gap:6px;}
 .ficha span{
-  padding-right:10px; margin-right:10px; border-right:1px solid var(--linha);
-  font-variant-numeric:tabular-nums;
+  font-size:12px; color:var(--tinta-media);
+  background:var(--superficie-2); border-radius:999px; padding:3px 9px;
+  font-variant-numeric:tabular-nums; white-space:nowrap;
 }
-.ficha span:last-child{border-right:0; padding-right:0; margin-right:0;}
-.ficha b{font-weight:600; color:var(--tinta);}
+.ficha b{font-weight:650; color:var(--tinta);}
 
-.preco-val{
-  font-size:19px; font-weight:640; letter-spacing:-.03em;
-  font-variant-numeric:tabular-nums; white-space:nowrap; line-height:1.2;
+/* Rodapé do card: preço à esquerda, ação à direita. */
+.imovel-rodape{
+  margin-top:auto; padding-top:12px;
+  display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
 }
-.preco-un{font-size:11px; color:var(--tinta-fraca); font-weight:400; display:block;}
+.preco-bloco{min-width:0;}
+.preco-val{
+  font-size:23px; font-weight:680; letter-spacing:-.035em;
+  font-variant-numeric:tabular-nums; white-space:nowrap; line-height:1.15;
+}
+.preco-un{font-size:12px; color:var(--tinta-suave); font-weight:400; margin-left:4px;}
 .preco-m2{
   font-family:var(--mono); font-size:11px; color:var(--tinta-suave);
   font-variant-numeric:tabular-nums; white-space:nowrap;
 }
+.acoes{margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+
+.btn-abrir{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:38px; padding:0 14px; border-radius:9px;
+  background:var(--mar); color:#fff; font-size:13px; font-weight:600;
+  text-decoration:none; white-space:nowrap;
+}
+:root[data-tema="escuro"] .btn-abrir,
+:root:not([data-tema="claro"]) .btn-abrir{color:#0D1114;}
+@media (prefers-color-scheme: light){
+  :root:not([data-tema="escuro"]) .btn-abrir{color:#fff;}
+}
+.btn-abrir svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;}
+
+/* Botão de ofertas: alvo explícito. A versão anterior fazia a linha toda
+   virar botão com uma setinha de 10px -- no toque isso disputava com a
+   seleção de texto e com o link, e parecia quebrado. */
+.btn-ofertas{
+  display:inline-flex; align-items:center; gap:6px;
+  height:38px; padding:0 12px; border-radius:9px; cursor:pointer;
+  border:1px solid var(--linha-forte); background:var(--fundo);
+  color:var(--tinta-media); font-family:var(--sans); font-size:13px; font-weight:550;
+  white-space:nowrap;
+}
+.btn-ofertas:hover{color:var(--tinta); background:var(--superficie);}
+.btn-ofertas .seta{
+  display:inline-block; font-size:9px; color:var(--tinta-fraca);
+  transition:transform .16s ease;
+}
+.btn-ofertas[aria-expanded="true"] .seta{transform:rotate(90deg);}
 
 /* ---------- sinais ---------- */
 /* Um selo só ganha cor quando exige AÇÃO. O resto é monocromático, para o
    olho encontrar o que importa sem varrer tudo. */
-.selos{display:flex; flex-wrap:wrap; gap:5px; margin-top:7px;}
+.selos{display:flex; flex-wrap:wrap; gap:5px;}
 .selo{
-  font-family:var(--mono); font-size:10px; letter-spacing:.05em;
-  text-transform:uppercase; font-weight:600;
-  padding:2px 6px; border-radius:3px;
+  font-size:10.5px; letter-spacing:.02em; font-weight:600;
+  padding:3px 7px; border-radius:5px;
   background:var(--superficie-2); color:var(--tinta-suave);
   white-space:nowrap;
 }
-.selo-novo{background:var(--mar-lavado); color:var(--mar);}
-.selo-queda{background:var(--ocre-lavado); color:var(--ocre);}
+.selo-novo{background:var(--mar); color:#fff;}
+.selo-queda{background:var(--ocre); color:#fff;}
+.foto-selos .selo{box-shadow:0 1px 3px rgba(0,0,0,.22);}
 .selo-fontes{background:var(--bom-lavado); color:var(--bom);}
+.selo-economia{background:var(--ocre-lavado); color:var(--ocre);}
 .selo-alerta{background:var(--atencao-lavado); color:var(--atencao);}
 .selo-fonte{
-  text-transform:none; letter-spacing:0; font-weight:500;
-  background:transparent; color:var(--tinta-fraca);
+  font-weight:500; background:transparent; color:var(--tinta-fraca);
   border:1px solid var(--linha);
 }
 
-/* ---------- ofertas (expansão) ---------- */
+/* ---------- ofertas (expansão dentro do card) ---------- */
+/* Lista, não tabela: tabela de 4 colunas só cabia com rolagem horizontal,
+   que é exatamente o que se quer evitar no celular. */
 .ofertas{
-  margin:10px 0 2px;
-  background:var(--superficie-2); border-radius:var(--r); overflow:hidden;
+  grid-column:1 / -1; border-top:1px solid var(--linha);
+  background:var(--superficie); padding:12px 16px 14px;
+  display:grid; gap:8px;
 }
-.ofertas table{border-collapse:collapse; width:100%; font-size:12.5px;}
-.ofertas th{
-  font-family:var(--mono); font-size:10px; letter-spacing:.08em;
-  text-transform:uppercase; color:var(--tinta-fraca); font-weight:600;
-  text-align:left; padding:8px 12px 6px;
+/* display:grid vence o atributo [hidden]; sem isto o painel nasce aberto */
+.ofertas[hidden]{display:none;}
+.oferta{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:10px 12px; border:1px solid var(--linha);
+  border-radius:10px; background:var(--fundo);
 }
-.ofertas td{
-  padding:8px 12px; border-top:1px solid var(--linha);
-  font-variant-numeric:tabular-nums;
+.oferta-fonte{font-size:13px; font-weight:600; min-width:0;}
+.oferta-preco{
+  margin-left:auto; font-weight:670; font-size:14px;
+  font-variant-numeric:tabular-nums; white-space:nowrap;
 }
-.ofertas .of-preco{text-align:right; font-weight:600; font-family:var(--mono);}
-.ofertas .of-obs{color:var(--tinta-fraca); font-size:11.5px;}
-.ofertas .of-link{text-align:right;}
-.ofertas .of-link a{
-  color:var(--mar); text-decoration:none; font-size:11.5px; font-weight:500;
+.oferta-obs{flex-basis:100%; font-size:11.5px; color:var(--tinta-fraca);}
+.oferta-link{
+  font-size:12.5px; font-weight:600; color:var(--mar); text-decoration:none;
+  white-space:nowrap;
 }
-.ofertas .of-link a:hover{text-decoration:underline;}
-.ofertas tr.melhor td{background:var(--bom-lavado);}
-.ofertas tr.melhor .of-preco{color:var(--bom);}
-.ofertas .marca-melhor{
-  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em;
-  color:var(--bom); text-transform:uppercase; margin-left:6px;
+.oferta-link:hover{text-decoration:underline;}
+.oferta.melhor{border-color:var(--bom); background:var(--bom-lavado);}
+.oferta.melhor .oferta-preco{color:var(--bom);}
+.marca-melhor{
+  font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--bom); margin-left:6px;
 }
 
-.abrir{
-  display:inline-flex; align-items:center; gap:5px;
-  font-size:12px; font-weight:550; color:var(--mar);
-  text-decoration:none; padding:4px 0; white-space:nowrap;
-}
-.abrir:hover{text-decoration:underline;}
-.abrir svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;}
-
-.faixa{width:56px;height:20px;vertical-align:-4px;margin-left:2px;}
+.faixa{width:56px;height:20px;vertical-align:-4px;flex-shrink:0;}
 
 /* ---------- estado vazio ---------- */
 .estado-vazio{
@@ -398,7 +444,7 @@ a{color:inherit;}
 .saude summary:hover{color:var(--tinta);}
 .ponto{width:6px;height:6px;border-radius:50%;background:var(--bom);flex-shrink:0;}
 .ponto.alerta{background:var(--atencao);}
-.saude-rolagem{overflow-x:auto; margin-top:12px;}
+.saude-rolagem{overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:12px;}
 .saude table{border-collapse:collapse;width:100%;min-width:560px;font-size:12px;}
 .saude th{
   font-family:var(--mono); font-size:10px; letter-spacing:.07em;
@@ -419,19 +465,96 @@ a{color:inherit;}
 }
 
 /* ---------- responsivo ---------- */
+/* Alvos reais: Poco X6 Pro (Chrome Android, ~412px de largura CSS) e
+   iPhone 11 (Safari, 414px, com notch). Três regras carregam o peso:
+
+     1. campo de formulário com 16px -- abaixo disso o Safari do iPhone dá
+        zoom ao focar e o usuário fica preso num layout deslocado;
+     2. alvo de toque de 40-44px -- 34px de mouse erra no polegar;
+     3. env(safe-area-inset-*) -- no iPhone em paisagem o notch e a barra
+        de gestos comem a lateral e o rodapé.
+
+   Hover fica atrás de (hover:none) invertido: no toque o estado "hover"
+   gruda depois do tap e o card fica pintado até o próximo toque. */
+
+@media (hover:none){
+  .imovel:hover{border-color:var(--linha); box-shadow:var(--sombra);}
+  .chip:hover{border-color:var(--linha); color:var(--tinta-media);}
+  .btn-tema:hover{border-color:var(--linha); color:var(--tinta-suave);}
+  .btn-ofertas:hover{background:var(--fundo); color:var(--tinta-media);}
+  .btn-limpar:hover{color:var(--tinta-fraca);}
+  .saude summary:hover{color:var(--tinta-fraca);}
+  .oferta-link:hover{text-decoration:none;}
+}
+
+/* Cards lado a lado quando sobra largura: aí a foto vai para o topo, como
+   na grade dos portais. */
+@media (min-width:1000px){
+  .lista{grid-template-columns:1fr 1fr;}
+  .imovel{grid-template-columns:1fr; align-content:start;}
+  .foto{aspect-ratio:16/9;}
+}
+
 @media (max-width:720px){
-  .pagina{padding:0 16px 60px;}
-  .topo{padding:0 16px;}
-  .pulso{gap:14px 0;}
-  .pulso-item{padding:0 14px;}
-  .imovel{flex-direction:column; gap:8px; padding:14px 8px; margin:0 -8px;}
-  .imovel-lado{align-items:flex-start; text-align:left; flex-direction:row;
-               align-items:baseline; gap:10px; flex-wrap:wrap;}
-  .preco-un{display:inline; margin-left:3px;}
-  .pulso-item{padding-right:20px; margin-right:20px;}
+  .pagina{
+    padding-left:max(16px, env(safe-area-inset-left));
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-bottom:calc(56px + env(safe-area-inset-bottom));
+  }
+  .topo{
+    padding-left:max(16px, env(safe-area-inset-left));
+    padding-right:max(16px, env(safe-area-inset-right));
+  }
+  .topo-linha{height:52px; gap:10px;}
+  .marca{font-size:14.5px; gap:8px; min-width:0;}
+  .btn-tema{width:40px; height:40px;}
+
+  /* Pulso em duas colunas: com auto-fit o rótulo "Mediana R$/m²" quebrava
+     em três linhas. A faixa de preço ocupa a linha inteira porque é o
+     único item com dois números. */
+  .pulso{grid-template-columns:1fr 1fr; gap:0; padding:14px 0 16px;}
+  .pulso-item{
+    padding:10px 0 10px 14px;
+    border-left:1px solid var(--linha); border-top:1px solid var(--linha);
+  }
+  .pulso-item:nth-child(odd){padding-left:0; border-left:0;}
+  .pulso-item:nth-child(1),.pulso-item:nth-child(2){border-top:0;}
+  .pulso-item:last-child{grid-column:1 / -1; padding-left:0; border-left:0;}
   .pulso-val{font-size:21px;}
-  .campo.busca input{width:120px;}
-  .ofertas{overflow-x:auto;}
+
+  /* Filtros: três chips numa linha, campos em duas colunas. */
+  .filtros{gap:8px; padding-bottom:12px;}
+  .chip{
+    flex:1 1 calc(33.333% - 6px); justify-content:center;
+    height:40px; font-size:13.5px; padding:0 8px;
+  }
+  /* sem flex-grow: campo sozinho na linha não estica para 100% e
+     quebra o ritmo de duas colunas */
+  .campo{flex:0 1 calc(50% - 4px); height:44px; padding:0 12px;}
+  .campo select,.campo input{font-size:16px; height:42px; width:100%; max-width:none;}
+  /* rótulo longo ('Todas as cidades') não pode passar por baixo da seta */
+  .campo select{text-overflow:ellipsis; padding-right:2px;}
+  .campo.preco,.campo.busca{flex:0 1 100%;}
+  .campo.preco input,.campo.busca input{width:100%;}
+  .btn-limpar{height:40px; padding:0 10px; font-size:13px;}
+
+  /* Card empilhado: foto larga em cima, como nos apps dos portais. */
+  .lista{gap:14px;}
+  .imovel{grid-template-columns:1fr;}
+  .foto{aspect-ratio:16/10;}
+  .imovel-corpo{padding:13px 14px 14px;}
+  .imovel-rodape{padding-top:10px;}
+  .acoes{margin-left:0; width:100%;}
+  .btn-abrir,.btn-ofertas{height:42px; flex:1 1 auto; justify-content:center;}
+  .ofertas{padding:12px 14px 14px;}
+  .contagem{padding-top:10px;}
+}
+
+/* Telas estreitas (o Poco cai aqui com fonte do sistema aumentada). */
+@media (max-width:430px){
+  .marca-sub{display:none;}
+  .imovel-titulo{font-size:15.5px;}
+  .preco-val{font-size:21px;}
 }
 """
 
@@ -445,5 +568,6 @@ ICONES = {
     "moeda": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.8"/><path d="M10 6v8M12 8.2c0-1-.9-1.7-2-1.7s-2 .7-2 1.6c0 2.2 4 1.2 4 3.4 0 .9-.9 1.6-2 1.6s-2-.7-2-1.7"/></svg>',
     "sol": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 4.3l-1.4 1.4M5.7 14.3l-1.4 1.4"/></svg>',
     "lua": '<svg viewBox="0 0 20 20"><path d="M16.5 11.8A6.8 6.8 0 0 1 8.2 3.5a6.8 6.8 0 1 0 8.3 8.3Z"/></svg>',
+    "foto": '<svg viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.2" r="1.3"/><path d="m3.5 14 4-3.6 3 2.6 2.6-2.2 3.4 3"/></svg>',
     "vazio": '<svg viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.4"/><path d="m16.5 16.5-3.9-3.9"/></svg>',
 }

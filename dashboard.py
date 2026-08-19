@@ -130,6 +130,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
             "anuncios": anuncios,
             "economia": i.get("economia") or 0,
             "url": urls_item[0] if urls_item else "#",
+            "foto": i.get("foto"),
             "novo": bool(i.get("novo")),
             "historico": hist,
             "queda": queda,
@@ -156,6 +157,13 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1114" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" media="all"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <title>Monitor de Apartamentos — Recife e Olinda</title>
 <style>{design.CSS_TOKENS}{design.CSS_BASE}</style>
 </head>
@@ -216,10 +224,10 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
       Confirmados <span class="chip-n">{multi}</span></button>
 
     <label class="campo">{ic['local']}
-      <select id="f-cidade" aria-label="Cidade"><option value="">Todas as cidades</option></select>
+      <select id="f-cidade" aria-label="Cidade"><option value="">Cidade: todas</option></select>
     </label>
     <label class="campo">
-      <select id="f-bairro" aria-label="Bairro"><option value="">Todos os bairros</option></select>
+      <select id="f-bairro" aria-label="Bairro"><option value="">Bairro: todos</option></select>
     </label>
     <label class="campo">{ic['filtro']}
       <select id="f-quartos" aria-label="Quartos mínimos">
@@ -227,10 +235,10 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
         <option value="2">2+</option><option value="3">3+</option><option value="4">4+</option>
       </select>
     </label>
-    <label class="campo">{ic['moeda']}
-      <input id="f-min" type="number" placeholder="mín" aria-label="Preço mínimo">
+    <label class="campo preco">{ic['moeda']}
+      <input id="f-min" type="number" inputmode="numeric" placeholder="mín" aria-label="Preço mínimo">
       <span class="sep">–</span>
-      <input id="f-max" type="number" placeholder="máx" aria-label="Preço máximo">
+      <input id="f-max" type="number" inputmode="numeric" placeholder="máx" aria-label="Preço máximo">
     </label>
     <label class="campo busca">{ic['busca']}
       <input id="f-busca" type="search" placeholder="bairro, rua, fonte…" aria-label="Busca livre">
@@ -248,7 +256,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
   </div>
 
   <div class="contagem" id="contagem"></div>
-  <div id="lista"></div>
+  <div id="lista" class="lista"></div>
 
   {_painel_saude(saude)}
 
@@ -262,7 +270,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
 <script>
 const DADOS = {json_dados};
 const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
-const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua')}, ensure_ascii=False)};
+const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto')}, ensure_ascii=False)};
 
 /* ---------- tema ---------- */
 const raiz = document.documentElement;
@@ -320,7 +328,7 @@ const chips = {{novos: el('c-novos'), quedas: el('c-quedas'), multi: el('c-multi
 function preencherBairros(){{
   const cid = selCidade.value, atual = selBairro.value;
   const escopo = cid ? DADOS.filter(d => d.cidade === cid) : DADOS;
-  selBairro.innerHTML = '<option value="">Todos os bairros</option>';
+  selBairro.innerHTML = '<option value="">Bairro: todos</option>';
   [...new Set(escopo.map(d => d.bairro).filter(Boolean))].sort().forEach(b => {{
     const o = document.createElement('option'); o.value = o.textContent = b; selBairro.appendChild(o);
   }});
@@ -377,18 +385,37 @@ function ordenar(lista){{
 /* ---------- render ---------- */
 const lista = el('lista'), contagem = el('contagem');
 
-function selos(d){{
+/* Selos de ação (novo, queda) vão sobre a foto -- é o primeiro lugar
+   onde o olho pousa no card. Os de contexto ficam no corpo. */
+function selosFoto(d){{
   const s = [];
   if (d.novo) s.push('<span class="selo selo-novo">Novo</span>');
   if (d.queda) s.push(`<span class="selo selo-queda">Baixou ${{brl(d.queda)}}</span>`);
+  return s.join('');
+}}
+
+function selos(d){{
+  const s = [];
   if (d.qtdFontes > 1) s.push(`<span class="selo selo-fontes">${{d.qtdFontes}} fontes confirmam</span>`);
-  if (d.economia > 0) s.push(`<span class="selo selo-queda">Economize ${{brl(d.economia)}}</span>`);
+  if (d.economia > 0) s.push(`<span class="selo selo-economia">Economize ${{brl(d.economia)}}</span>`);
   if (!d.custoCompleto) s.push('<span class="selo selo-alerta" title="a fonte não informou o condomínio">Custo parcial</span>');
   if (d.conflitos.length) s.push(`<span class="selo selo-alerta">Fontes divergem: ${{esc(d.conflitos.join(', '))}}</span>`);
   if (d.diasAnunciado > 60) s.push(`<span class="selo">${{d.diasAnunciado}}d no mercado</span>`);
   // as fontes vêm por último: contexto, não chamada de atenção
   d.sites.forEach(f => s.push(`<span class="selo selo-fonte">${{esc(f)}}</span>`));
   return s.join('');
+}}
+
+/* Foto de capa. Sem rede (ou sem foto na fonte) cai no marcador cinza:
+   o dashboard tem de continuar legível offline, que é a premissa dele. */
+function capa(d){{
+  const vazio = `<div class="foto-vazia">${{IC.foto}}</div>`;
+  const img = d.foto
+    ? `<img src="${{esc(d.foto)}}" alt="" loading="lazy" decoding="async"
+         onerror="this.remove()">`
+    : '';
+  return `<div class="foto">${{vazio}}${{img}}
+    <div class="foto-selos">${{selosFoto(d)}}</div></div>`;
 }}
 
 function ficha(d){{
@@ -415,15 +442,15 @@ function render(){{
 
   const frag = document.createDocumentFragment();
   for (const d of res){{
-    const linha = document.createElement('article');
-    linha.className = 'imovel';
-    const abrivel = d.anuncios.length > 1;
+    const card = document.createElement('article');
+    card.className = 'imovel';
     const local = [d.bairro, d.cidade].filter(Boolean).join(', ');
+    const varias = d.anuncios.length > 1;
 
-    linha.innerHTML = `
+    card.innerHTML = `
+      ${{capa(d)}}
       <div class="imovel-corpo">
         <div class="imovel-cab">
-          ${{abrivel ? '<span class="seta">&#9654;</span>' : '<span class="seta"></span>'}}
           <h3 class="imovel-titulo">${{esc(d.titulo)}}</h3>
           ${{faixa(d.historico)}}
         </div>
@@ -433,50 +460,48 @@ function render(){{
               : `<span class="rua rua-ausente">· endereço ${{NAO_LOC}}</span>`}}</div>
         <div class="ficha">${{ficha(d)}}</div>
         <div class="selos">${{selos(d)}}</div>
-      </div>
-      <div class="imovel-lado">
-        <div class="preco-val">${{esc(d.precoFmt)}}<span class="preco-un">por mês</span></div>
-        ${{d.precoM2 ? `<span class="preco-m2">${{d.precoM2.toFixed(0)}} /m²</span>` : ''}}
-        <a class="abrir" href="${{esc(d.url)}}" target="_blank" rel="noopener">
-          Ver anúncio ${{IC.externo}}</a>
+        <div class="imovel-rodape">
+          <div class="preco-bloco">
+            <div class="preco-val">${{esc(d.precoFmt)}}<span class="preco-un">/mês</span></div>
+            ${{d.precoM2 ? `<span class="preco-m2">${{d.precoM2.toFixed(0)}} R$/m²</span>` : ''}}
+          </div>
+          <div class="acoes">
+            ${{varias ? `<button class="btn-ofertas" type="button" aria-expanded="false">
+                 <span class="seta">&#9654;</span> ${{d.anuncios.length}} ofertas</button>` : ''}}
+            <a class="btn-abrir" href="${{esc(d.url)}}" target="_blank" rel="noopener">
+              Ver anúncio ${{IC.externo}}</a>
+          </div>
+        </div>
       </div>`;
-    frag.appendChild(linha);
 
-    // Progressive disclosure: só o imóvel com mais de uma oferta expande.
-    // O colapsado já mostra tudo que existe nos demais.
-    if (abrivel){{
-      linha.classList.add('abrivel');
-      linha.setAttribute('role', 'button');
-      linha.setAttribute('tabindex', '0');
-      linha.setAttribute('aria-expanded', 'false');
-
+    // Progressive disclosure: só o imóvel com mais de uma oferta expande, e
+    // a expansão vive DENTRO do card -- solta embaixo, parecia de outro
+    // imóvel. Lista, não tabela: tabela obrigava rolagem horizontal.
+    if (varias){{
       const painel = document.createElement('div');
       painel.className = 'ofertas';
       painel.hidden = true;
-      painel.innerHTML = `<table>
-        <thead><tr><th>Fonte</th><th style="text-align:right">Custo mensal</th>
-          <th>Composição</th><th></th></tr></thead>
-        <tbody>${{d.anuncios.map((o,i) => `
-          <tr class="${{i === 0 ? 'melhor' : ''}}">
-            <td>${{esc(o.site)}}${{i === 0 ? '<span class="marca-melhor">melhor</span>' : ''}}</td>
-            <td class="of-preco">${{o.preco ? brl(o.preco) : NAO_LOC}}</td>
-            <td class="of-obs">${{o.custo_completo
-                ? (o.condominio ? 'inclui condomínio ' + brl(o.condominio) : 'custo total')
-                : 'sem condomínio informado'}}</td>
-            <td class="of-link"><a href="${{esc(o.url)}}" target="_blank" rel="noopener">abrir</a></td>
-          </tr>`).join('')}}</tbody></table>`;
-      frag.appendChild(painel);
+      painel.innerHTML = d.anuncios.map((o,i) => `
+        <div class="oferta ${{i === 0 ? 'melhor' : ''}}">
+          <span class="oferta-fonte">${{esc(o.site)}}${{
+            i === 0 ? '<span class="marca-melhor">melhor</span>' : ''}}</span>
+          <span class="oferta-preco">${{o.preco ? brl(o.preco) : NAO_LOC}}</span>
+          <a class="oferta-link" href="${{esc(o.url)}}" target="_blank" rel="noopener">abrir</a>
+          <span class="oferta-obs">${{o.custo_completo
+              ? (o.condominio ? 'inclui condomínio ' + brl(o.condominio) : 'custo total')
+              : 'sem condomínio informado'}}</span>
+        </div>`).join('');
+      card.appendChild(painel);
 
-      const alternar = () => {{
-        const aberto = linha.getAttribute('aria-expanded') === 'true';
-        linha.setAttribute('aria-expanded', String(!aberto));
+      const btn = card.querySelector('.btn-ofertas');
+      btn.addEventListener('click', () => {{
+        const aberto = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!aberto));
         painel.hidden = aberto;
-      }};
-      linha.addEventListener('click', e => {{ if (!e.target.closest('a')) alternar(); }});
-      linha.addEventListener('keydown', e => {{
-        if (e.key === 'Enter' || e.key === ' '){{ e.preventDefault(); alternar(); }}
       }});
     }}
+
+    frag.appendChild(card);
   }}
   lista.appendChild(frag);
 }}
