@@ -2,6 +2,70 @@
 
 ---
 
+## Fase 4 — Celular, catálogo e operação (19/08/2026)
+
+### Dashboard no celular (Poco X6 Pro / iPhone 11)
+
+- [x] **Cards de verdade** — a lista separava imóveis por um divisor de 1px:
+  lia como jornal e, na tela estreita, não dava para dizer onde um anúncio
+  terminava e o outro começava. Agora cada imóvel é uma caixa com borda,
+  sombra e foto de capa, no espírito dos portais (Zap/Viva Real).
+- [x] **Foto de capa** — vem do campo `fotos` do banco (`db._primeira_foto`).
+  Sem foto na fonte ou sem rede, cai num marcador cinza: o dashboard tem de
+  continuar legível offline, que é a premissa dele.
+- [x] **Campos de 16px no celular** — abaixo disso o Safari do iPhone dá zoom
+  ao focar e prende o usuário num layout deslocado. Era o pior dos bugs
+  móveis, e invisível no desktop.
+- [x] **Alvos de toque de 40–44px** (eram 32–34px) e `env(safe-area-inset-*)`
+  para o notch em paisagem e a barra de gestos.
+- [x] **Hover atrás de `(hover:none)`** — no toque o estado grudava no card
+  até o próximo tap.
+- [x] **Expansão de ofertas** — virou botão explícito dentro do card, e o
+  painel virou lista de blocos. A tabela de 4 colunas era a origem da
+  rolagem horizontal no celular. Bug achado no caminho: `display:grid` vence
+  o atributo `[hidden]` e o painel nascia aberto.
+- [x] **Inter** com a fonte do sistema como reserva.
+
+### Operação e análise
+
+- [x] **`historico_precos` aposentada** — `evento` já era a fonte da série
+  desde a Fase 3 e as rodadas diárias confirmaram a equivalência (375
+  snapshots → 202 eventos, zero divergência em 195 URLs).
+  `aposentar_historico_precos()` migra o que restar ANTES de derrubar a
+  tabela: num banco que nunca rodou a migração, derrubar direto apagaria a
+  série de julho, que não pode ser recoletada.
+- [x] **Aba "Fontes" com rendimento** (`db.rendimento_por_fonte`) — saúde
+  responde "quebrou?"; rendimento responde "entrega?". Colunas: coletados,
+  no filtro, **só ela** (imóveis ativos que nenhuma outra fonte anuncia),
+  tempo e segundos por anúncio útil. Marca em âmbar quem gastou 20s+ e não
+  passou nada no filtro.
+  **Primeira leitura real:** 9 fontes sem nenhum anúncio no filtro, 121s por
+  rodada. Imovelweb e Imovelweb Olinda são as piores (37s cada, `SEM_ESTOQUE`).
+  O corte por "zero exclusivos" foi descartado de propósito: pegaria Zap e
+  Viva Real, que têm zero só porque duplicam uma à outra — e são o catálogo.
+- [x] **Filtros na URL** — o recorte vira link compartilhável e sobrevive ao
+  fechar a página (`?cidade=&bairro=&quartos=&min=&max=&q=&ordem=&sinais=&aba=`).
+  `replaceState` em `try/catch`: abrir por duplo clique (`file://`) dá origem
+  nula e a exceção derrubava o render inteiro — o link não pode custar o
+  dashboard.
+- [x] **REMAX reativado** — rota nova `/listings?...&TransactionTypeUID=260`.
+  Na primeira rodada: 64 coletados, 4 no filtro, 1 imóvel exclusivo.
+
+### Ainda aberto
+
+- [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.
+  Candidatas: Imovelweb, Imovelweb Olinda (74s/rodada, zero estoque),
+  Josinildo, Rogério, Newville, Sérgio Rodrigues, Cristina Mirele, Luiza
+  Parizi, Belchior Alvarez. Antes de cortar, checar se o filtro de preço da
+  busca está apertando demais nas pequenas.
+- [ ] **Favoritos / descartados** — marcar imóvel no dashboard e o estado
+  sobreviver à próxima rodada. Precisa de armazenamento local (o arquivo é
+  regerado todo dia).
+- [ ] **Alerta ativo** — hoje é preciso abrir o dashboard para saber que algo
+  baixou de preço. Uma notificação no dia da queda é o que fecha o ciclo.
+
+---
+
 ## Fase 3 + auditoria + design system (19/08/2026)
 
 ### Fase 3 — Histórico e operação diária
@@ -94,22 +158,15 @@
   `extracao_jsonld.py`), `db.listar_vistos_na_ultima_execucao` e
   `db.contar_execucoes_anteriores`.
 
-### Auditoria — recomendado, não aplicado
+### Auditoria — recomendado (estado atual)
 
-- [ ] **Paralelizar fontes Playwright** — 6 fontes = 237s dos 349s (68%).
-  Pool de 3 workers levaria a rodada de ~6 min para ~2. Não apliquei porque
-  muda a estrutura do scraper e o consumo de memória do Chromium no runner,
-  e não consigo validar as duas coisas com confiança agora. **Maior retorno
-  disponível.**
-- [ ] **Aposentar `historico_precos`** — duplica `evento`. O dashboard ainda
-  lê a tabela antiga para a faixa de preço.
-- [ ] **Medir rendimento por fonte** — Imovelweb 30→0, CRECI 100→2,
-  Newville 20→0, Rogério 16→0: 68s por rodada para 2 imóveis. Hipóteses
-  diferentes (CRECI não filtra preço na busca; Imovelweb pode não ter
-  estoque). Medir antes de cortar — cortar por rendimento pode cortar
-  justamente a fonte da oportunidade.
-- [ ] **`VACUUM` + poda de inativos** — banco foi de 163 KB para 668 KB.
-- [ ] **Filtros na URL** e **favoritos/descartados**.
+- [x] **Paralelizar fontes Playwright** — feito na Fase 3.5 (PR #2).
+- [x] **Aposentar `historico_precos`** — feito na Fase 4.
+- [x] **Medir rendimento por fonte** — feito na Fase 4, aba "Fontes".
+- [x] **`VACUUM` + poda de inativos** — `db.manutencao()` roda toda rodada;
+  o `VACUUM` só no domingo (reescreve o arquivo inteiro, não vale diário).
+- [x] **Filtros na URL** — feito na Fase 4.
+- [ ] **Favoritos / descartados** — segue aberto.
 
 Testes: **111 → 121**. Rodada: 18 fontes ativas, 72 anúncios, 50 imóveis.
 

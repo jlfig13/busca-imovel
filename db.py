@@ -180,14 +180,10 @@ INATIVO = "INATIVO"
 # falso justamente nos imóveis que interessam.
 AUSENCIAS_PARA_INATIVO = 2
 
-SQL_CRIAR_HISTORICO = """
-CREATE TABLE IF NOT EXISTS historico_precos (
-    url TEXT NOT NULL,
-    data TEXT NOT NULL,
-    preco REAL,
-    PRIMARY KEY (url, data)
-);
-"""
+# historico_precos NÃO é mais criada. A tabela existe só em banco antigo,
+# e `aposentar_historico_precos` a migra para `evento` e a derruba na
+# primeira rodada. Recriá-la aqui faria a aposentadoria ser desfeita a cada
+# conexão -- e um banco novo nasceria já com a estrutura que se quer matar.
 
 # ---------------------------------------------------------------------------
 # Execuções (P-04 da auditoria)
@@ -241,7 +237,6 @@ STATUS_CONFIAVEIS = {OK}
 def conectar() -> sqlite3.Connection:
     conn = sqlite3.connect(config.ARQUIVO_DB)
     conn.execute(SQL_CRIAR_TABELA)
-    conn.execute(SQL_CRIAR_HISTORICO)
     conn.execute(SQL_CRIAR_EXECUCAO)
     conn.execute(SQL_CRIAR_EXECUCAO_FONTE)
     conn.execute(SQL_CRIAR_IMOVEL)
@@ -524,6 +519,101 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
 DIAS_PARA_PODA = 180
 
 
+def rendimento_por_fonte(ultimas: int = 10) -> list[dict]:
+    """Custo x retorno de cada fonte nas últimas rodadas.
+
+    Existe para responder uma pergunta que o painel de saúde não responde:
+    vale a pena continuar consultando esta fonte? Saúde diz se a fonte
+    QUEBROU; rendimento diz se ela ENTREGA. São coisas diferentes -- uma
+    fonte pode estar tecnicamente saudável e devolver zero imóvel útil
+    rodada após rodada, gastando segundos de runner por nada.
+
+    Duas colunas fazem o trabalho pesado:
+
+      `no_filtro` -- quantos anúncios da fonte passaram no perfil de busca.
+      É o retorno bruto.
+
+      `exclusivos` -- imóveis ativos que SÓ esta fonte anuncia. É o que se
+      perde de fato ao desligá-la. Uma fonte com 30 anúncios e zero
+      exclusivos é redundante: outro portal já traz os mesmos imóveis.
+
+    Cortar por volume sem olhar exclusividade cortaria justamente a fonte
+    pequena que traz o imóvel que ninguém mais tem.
+    """
+    conn = conectar()
+    conn.row_factory = sqlite3.Row
+
+    execucoes = [r[0] for r in conn.execute(
+        "SELECT id FROM execucao ORDER BY id DESC LIMIT ?", (ultimas,)
+    )]
+    if not execucoes:
+        conn.close()
+        return []
+    marcadores = ",".join("?" * len(execucoes))
+
+    linhas = conn.execute(
+        f"""SELECT fonte,
+                   COUNT(*)                AS rodadas,
+                   SUM(brutos)             AS brutos,
+                   SUM(aprovados)          AS no_filtro,
+                   SUM(indeterminados)     AS indeterminados,
+                   SUM(duracao_s)          AS segundos,
+                   SUM(CASE WHEN status IN ('FALHA','BLOQUEADO') THEN 1 ELSE 0 END) AS falhas
+            FROM execucao_fonte
+            WHERE execucao_id IN ({marcadores}) AND status != 'PULADO'
+            GROUP BY fonte""",
+        execucoes,
+    ).fetchall()
+
+    # Ativos e exclusivos vêm do estado ATUAL, não do acumulado: a decisão de
+    # desligar uma fonte se toma sobre o estoque que ela sustenta hoje.
+    ativos = dict(conn.execute(
+        "SELECT site, COUNT(*) FROM imoveis WHERE visto_na_ultima_execucao = 1 "
+        "GROUP BY site"
+    ).fetchall())
+    exclusivos = dict(conn.execute(
+        """SELECT site, COUNT(*) FROM (
+             SELECT MIN(site) AS site
+             FROM imoveis
+             WHERE visto_na_ultima_execucao = 1 AND imovel_id IS NOT NULL
+             GROUP BY imovel_id
+             HAVING COUNT(DISTINCT site) = 1
+           ) GROUP BY site"""
+    ).fetchall())
+    ultimo_status = dict(conn.execute(
+        """SELECT fonte, status FROM execucao_fonte
+           WHERE execucao_id = (SELECT MAX(execucao_id) FROM execucao_fonte)"""
+    ).fetchall())
+    conn.close()
+
+    saida = []
+    for r in linhas:
+        no_filtro = r["no_filtro"] or 0
+        segundos = r["segundos"] or 0
+        saida.append({
+            "fonte": r["fonte"],
+            "rodadas": r["rodadas"],
+            "brutos": r["brutos"] or 0,
+            "no_filtro": no_filtro,
+            "indeterminados": r["indeterminados"] or 0,
+            "segundos": round(segundos, 1),
+            "falhas": r["falhas"],
+            "ativos": ativos.get(r["fonte"], 0),
+            "exclusivos": exclusivos.get(r["fonte"], 0),
+            "status": ultimo_status.get(r["fonte"], "—"),
+            # segundos gastos por anúncio que passou no filtro; sem retorno,
+            # o custo é o tempo inteiro
+            "s_por_util": round(segundos / no_filtro, 1) if no_filtro else None,
+        })
+    # Pior rendimento primeiro: quem não passou NADA no filtro encabeça, e
+    # entre iguais vai na frente quem gastou mais tempo. Ordenar por
+    # exclusivos antes de volume jogaria Zap e Viva Real para o topo -- elas
+    # têm zero exclusivos só porque anunciam os mesmos imóveis uma da outra,
+    # e são justamente as fontes que sustentam o catálogo.
+    saida.sort(key=lambda x: (x["no_filtro"], x["exclusivos"], -x["segundos"]))
+    return saida
+
+
 def manutencao(vacuum: bool = False) -> dict:
     """Poda anúncios inativos antigos e, opcionalmente, compacta o banco.
 
@@ -549,7 +639,6 @@ def manutencao(vacuum: bool = False) -> dict:
         marcadores = ",".join("?" * len(alvos))
         cur.execute(f"DELETE FROM evento WHERE url IN ({marcadores})", alvos)
         cur.execute(f"DELETE FROM imovel_anuncio WHERE url IN ({marcadores})", alvos)
-        cur.execute(f"DELETE FROM historico_precos WHERE url IN ({marcadores})", alvos)
         cur.execute(f"DELETE FROM imoveis WHERE url IN ({marcadores})", alvos)
         # imóvel que ficou sem nenhum anúncio some também
         cur.execute(
@@ -578,6 +667,44 @@ def manutencao(vacuum: bool = False) -> dict:
     return r
 
 
+def _tabela_existe(conn, nome: str) -> bool:
+    return bool(conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (nome,)
+    ).fetchone())
+
+
+def aposentar_historico_precos() -> bool:
+    """Migra o que resta de historico_precos e derruba a tabela.
+
+    A tabela ficou congelada desde a Fase 3 como rede de segurança: `evento`
+    passou a ser a fonte da série e as rodadas diárias confirmaram a
+    equivalência (375 snapshots -> 202 eventos, zero divergência em 195
+    URLs). Mantê-la agora só custa bytes num arquivo binário que é comitado
+    a cada rodada.
+
+    Migra ANTES de derrubar, sempre: num banco que nunca rodou a migração
+    (uma cópia velha, um clone antigo do repositório), derrubar direto
+    apagaria a série anterior à Fase 3, que não pode ser recoletada.
+
+    Devolve True se derrubou algo.
+    """
+    conn = conectar()
+    if not _tabela_existe(conn, "historico_precos"):
+        conn.close()
+        return False
+    conn.close()
+
+    migrar_historico_para_evento()
+
+    conn = conectar()
+    linhas = conn.execute("SELECT COUNT(*) FROM historico_precos").fetchone()[0]
+    conn.execute("DROP TABLE historico_precos")
+    conn.commit()
+    conn.close()
+    log.info(f"historico_precos aposentada ({linhas} linhas já migradas para evento)")
+    return True
+
+
 def migrar_historico_para_evento() -> int:
     """Converte historico_precos em eventos. Uma vez, idempotente.
 
@@ -594,6 +721,10 @@ def migrar_historico_para_evento() -> int:
     """
     conn = conectar()
     cur = conn.cursor()
+
+    if not _tabela_existe(conn, "historico_precos"):
+        conn.close()
+        return 0
 
     ja_feito = cur.execute(
         "SELECT COUNT(*) FROM evento WHERE tipo = ?", ("MIGRACAO_HISTORICO",)
@@ -651,7 +782,7 @@ def migrar_historico_para_evento() -> int:
 def obter_serie_precos(urls: list[str]) -> dict[str, list]:
     """Série de preço por URL, reconstruída dos eventos.
 
-    Substitui obter_historico_todos (que lia historico_precos). Cada evento
+    Substituiu a leitura de historico_precos, hoje aposentada. Cada evento
     de preço carrega o valor novo; a série é a sequência ordenada deles.
     Limitada aos últimos 30 pontos por imóvel, como antes."""
     if not urls:
@@ -894,30 +1025,5 @@ def consolidar_imoveis(itens: list[dict]) -> list[dict]:
     )
     return consolidados
 
-
-def obter_historico_todos(urls: list[str]) -> dict[str, list]:
-    """CONGELADA. Lê o snapshot antigo, que não recebe escrita nova.
-
-    Mantida só para comparar com obter_serie_precos e confirmar em produção
-    que a troca não perdeu série. Sai junto com a tabela historico_precos
-    depois de algumas rodadas diárias validando a equivalência."""
-    if not urls:
-        return {}
-    conn = conectar()
-    placeholders = ",".join("?" * len(urls))
-    cur = conn.execute(
-        f"""
-        SELECT url, data, preco FROM historico_precos
-        WHERE url IN ({placeholders})
-        ORDER BY url, data ASC
-        """,
-        urls,
-    )
-    resultado: dict[str, list] = {}
-    for url, data, preco in cur:
-        resultado.setdefault(url, []).append([data, preco])
-    conn.close()
-    # Keep last 30 entries per url
-    return {u: v[-30:] for u, v in resultado.items()}
 
 
