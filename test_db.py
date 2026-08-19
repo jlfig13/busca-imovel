@@ -273,19 +273,68 @@ def test_serie_acumula_mudancas_de_preco(banco):
     assert valores == [2000.0, 1800.0]
 
 
-def test_migracao_do_historico_e_idempotente(banco):
+def _banco_legado(banco, linhas=(("2026-07-01", 2000.0), ("2026-07-02", 2000.0),
+                                 ("2026-07-03", 1900.0))):
+    """Recria a tabela aposentada, como num banco anterior à Fase 3."""
     conn = banco.conectar()
-    for data, preco in [("2026-07-01", 2000.0), ("2026-07-02", 2000.0),
-                        ("2026-07-03", 1900.0)]:
+    conn.execute("""CREATE TABLE IF NOT EXISTS historico_precos (
+        url TEXT NOT NULL, data TEXT NOT NULL, preco REAL, PRIMARY KEY (url, data))""")
+    for data, preco in linhas:
         conn.execute("INSERT INTO historico_precos (url, data, preco) VALUES (?,?,?)",
                      ("u9", data, preco))
     conn.commit(); conn.close()
 
+
+def test_migracao_do_historico_e_idempotente(banco):
+    _banco_legado(banco)
     n1 = banco.migrar_historico_para_evento()
     n2 = banco.migrar_historico_para_evento()
     assert n1 == 2      # CRIADO 2000 + PRECO_ALTERADO 1900; o repetido é descartado
     assert n2 == 0      # reexecutar não duplica
     assert [p for _, p in banco.obter_serie_precos(["u9"])["u9"]] == [2000.0, 1900.0]
+
+
+def test_migracao_e_no_op_sem_a_tabela_antiga(banco):
+    # banco novo nasce sem historico_precos: migrar não pode explodir
+    assert banco.migrar_historico_para_evento() == 0
+
+
+def test_aposentadoria_migra_antes_de_derrubar(banco):
+    """A série de julho existe SÓ no snapshot: derrubar sem migrar a perde."""
+    _banco_legado(banco)
+    assert banco.aposentar_historico_precos() is True
+
+    conn = banco.conectar()
+    assert not banco._tabela_existe(conn, "historico_precos")
+    conn.close()
+    # a série sobreviveu à queda da tabela
+    assert [p for _, p in banco.obter_serie_precos(["u9"])["u9"]] == [2000.0, 1900.0]
+    # segunda chamada não tem o que fazer
+    assert banco.aposentar_historico_precos() is False
+
+
+def test_rendimento_separa_exclusivo_de_redundante(banco):
+    """Fonte redundante (outro portal traz o mesmo imóvel) tem exclusivos=0."""
+    execucao = banco.abrir_execucao()
+    itens = [
+        _item(url="ex1", site="Zap", preco=2000.0),
+        _item(url="ex2", site="Viva Real", preco=2000.0),
+        _item(url="ex3", site="Só Aqui", preco=3100.0, area_m2=95.0),
+    ]
+    banco.salvar_execucao(itens, fontes_confiaveis={"Zap", "Viva Real", "Só Aqui"})
+    for fonte in ("Zap", "Viva Real", "Só Aqui"):
+        banco.registrar_fonte(execucao, fonte, "OK", brutos=5, aprovados=1,
+                              duracao_s=10.0)
+    # Zap e Viva Real anunciam o MESMO imóvel; Só Aqui é a única do dela
+    banco.consolidar_imoveis(itens)
+
+    por_fonte = {r["fonte"]: r for r in banco.rendimento_por_fonte()}
+    assert por_fonte["Só Aqui"]["exclusivos"] == 1
+    assert por_fonte["Zap"]["exclusivos"] == 0
+    assert por_fonte["Viva Real"]["exclusivos"] == 0
+    assert por_fonte["Zap"]["s_por_util"] == 10.0
+    # pior rendimento primeiro: quem não tem exclusivo encabeça a lista
+    assert banco.rendimento_por_fonte()[-1]["fonte"] == "Só Aqui"
 
 
 def test_manutencao_preserva_anuncio_ativo(banco):

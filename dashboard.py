@@ -86,7 +86,74 @@ def _painel_saude(saude: list[dict] | None) -> str:
   </details>"""
 
 
-def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
+def _painel_rendimento(rendimento: list[dict] | None) -> str:
+    """Custo x retorno por fonte, para decidir o que desligar.
+
+    A ordem vem do banco: pior rendimento primeiro (sem exclusivos, pouco
+    volume, muito tempo). É a lista de candidatos a corte, de cima para
+    baixo. Marcamos em âmbar quem gastou tempo e não trouxe nada exclusivo
+    -- não é ordem de desligar, é onde olhar."""
+    if not rendimento:
+        return '<div class="estado-vazio">Sem execuções registradas ainda.</div>'
+
+    max_filtro = max((f["no_filtro"] for f in rendimento), default=0) or 1
+    max_excl = max((f["exclusivos"] for f in rendimento), default=0) or 1
+
+    linhas = []
+    for f in rendimento:
+        # Candidato a corte: gastou tempo e não passou NADA no filtro.
+        # Marcar por "zero exclusivos" pegaria Zap e Viva Real, que só têm
+        # zero porque duplicam uma à outra -- e são o catálogo inteiro.
+        suspeito = f["no_filtro"] == 0 and f["segundos"] >= 20
+        larg_f = round(100 * f["no_filtro"] / max_filtro)
+        larg_e = round(100 * f["exclusivos"] / max_excl)
+        # sem nenhum anúncio útil não existe custo por útil -- e escrever
+        # "Não Localizado" aqui sugeriria dado que a fonte não informou
+        s_util = f"{f['s_por_util']:.0f}s" if f["s_por_util"] else "—"
+        linhas.append(
+            f"<tr class='{'aviso' if suspeito else ''}'>"
+            f"<td class='fonte'>{html.escape(f['fonte'])}</td>"
+            f"<td><span class='st {_CLASSE_STATUS.get(f['status'], 'st-neutro')}'>"
+            f"{html.escape(str(f['status']))}</span></td>"
+            f"<td class='n'>{f['rodadas']}</td>"
+            f"<td class='n'>{f['brutos']}</td>"
+            f"<td class='n'>{f['no_filtro']}"
+            f"<span class='barra{'' if f['no_filtro'] else ' vazia'}' "
+            f"style='width:{max(larg_f, 2)}%'></span></td>"
+            f"<td class='n'>{f['exclusivos']}"
+            f"<span class='barra{'' if f['exclusivos'] else ' vazia'}' "
+            f"style='width:{max(larg_e, 2)}%'></span></td>"
+            f"<td class='n'>{f['segundos']:.0f}s</td>"
+            f"<td class='n'>{s_util}</td>"
+            f"<td class='n'>{f['falhas'] or ''}</td></tr>"
+        )
+
+    vazias = [f for f in rendimento if f["no_filtro"] == 0]
+    tempo_vazio = sum(f["segundos"] for f in vazias)
+    nota = (f"{len(vazias)} fonte(s) não passaram nenhum anúncio no filtro nessas "
+            f"rodadas, gastando {tempo_vazio:.0f}s no total."
+            if vazias else "Todas as fontes passaram pelo menos um anúncio no filtro.")
+
+    return f"""<p class="rend-nota">Últimas 10 execuções. <b>No filtro</b> é o que a
+    fonte entrega dentro do perfil de busca; <b>só ela</b> é o que se perde ao
+    desligá-la — imóveis ativos que nenhuma outra fonte anuncia. {nota}</p>
+    <div class="rend-rolagem"><table>
+      <thead><tr><th>Fonte</th><th>Último status</th><th class="n">Rodadas</th>
+        <th class="n">Coletados</th><th class="n">No filtro</th>
+        <th class="n">Só ela</th><th class="n">Tempo</th>
+        <th class="n">Por útil</th><th class="n">Falhas</th></tr></thead>
+      <tbody>{''.join(linhas)}</tbody>
+    </table></div>
+    <div class="rend-legenda">
+      Linha em âmbar: gastou 20s+ e não trouxe nenhum imóvel exclusivo.<br>
+      "Por útil" = segundos gastos por anúncio que passou no filtro.<br>
+      Volume baixo não basta para desligar: uma fonte pequena pode ser a única
+      com o imóvel que interessa. A coluna "Só ela" é a que decide.
+    </div>"""
+
+
+def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
+                    rendimento: list[dict] | None = None) -> str:
     """Monta o dashboard a partir dos IMÓVEIS consolidados (não anúncios)."""
 
     urls = [u for i in itens for u in (i.get("urls") or [i.get("url", "")])]
@@ -215,7 +282,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
     </div>
   </section>
 
-  <div class="filtros">
+  <div class="filtros" id="filtros">
     <button class="chip" id="c-novos" type="button" aria-pressed="false">
       Novos <span class="chip-n">{novos}</span></button>
     <button class="chip" id="c-quedas" type="button" aria-pressed="false">
@@ -255,10 +322,24 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
     <button class="btn-limpar" id="btn-limpar" type="button">Limpar</button>
   </div>
 
-  <div class="contagem" id="contagem"></div>
-  <div id="lista" class="lista"></div>
+  <nav class="abas" role="tablist">
+    <button class="aba" id="aba-imoveis" role="tab" aria-selected="true"
+            aria-controls="painel-imoveis" type="button">
+      Imóveis <span class="aba-n">{len(dados)}</span></button>
+    <button class="aba" id="aba-fontes" role="tab" aria-selected="false"
+            aria-controls="painel-fontes" type="button">
+      Fontes <span class="aba-n">{len(rendimento or [])}</span></button>
+  </nav>
 
-  {_painel_saude(saude)}
+  <section id="painel-imoveis" role="tabpanel" aria-labelledby="aba-imoveis">
+    <div class="contagem" id="contagem"></div>
+    <div id="lista" class="lista"></div>
+  </section>
+
+  <section id="painel-fontes" role="tabpanel" aria-labelledby="aba-fontes" hidden>
+    <div class="rend">{_painel_rendimento(rendimento)}</div>
+    {_painel_saude(saude)}
+  </section>
 
   <footer class="rodape">
     Filtros: {perfis} · R$ {config.FILTROS['preco_min']:,}–{config.FILTROS['preco_max']:,}
@@ -429,6 +510,7 @@ function ficha(d){{
 }}
 
 function render(){{
+  gravarUrl();
   const res = ordenar(filtrar());
   contagem.textContent = res.length === DADOS.length
     ? `${{res.length}} imóveis`
@@ -517,6 +599,68 @@ el('btn-limpar').addEventListener('click', () => {{
   preencherBairros(); render();
 }});
 
+/* ---------- abas ---------- */
+const abas = {{imoveis: el('aba-imoveis'), fontes: el('aba-fontes')}};
+const paineis = {{imoveis: el('painel-imoveis'), fontes: el('painel-fontes')}};
+const filtrosEl = el('filtros');
+
+function mostrarAba(nome, gravar = true){{
+  for (const [k, b] of Object.entries(abas)){{
+    b.setAttribute('aria-selected', String(k === nome));
+    paineis[k].hidden = k !== nome;
+  }}
+  // filtro de imóvel não filtra fonte: some junto com o catálogo
+  filtrosEl.hidden = nome !== 'imoveis';
+  if (gravar) gravarUrl();
+}}
+Object.entries(abas).forEach(([k, b]) =>
+  b.addEventListener('click', () => mostrarAba(k)));
+
+/* ---------- estado na URL ----------
+   Um recorte útil ("2 quartos em Casa Caiada até 2.500") só se compartilha
+   e só se refaz amanhã se couber num link. Sem isto, cada abertura do
+   dashboard recomeça do zero. replaceState, não pushState: refazer filtro
+   não é navegação, e encher o histórico faria o botão "voltar" do celular
+   virar desfazer-filtro em vez de sair da página. */
+const CAMPOS_URL = [
+  ['cidade', selCidade], ['bairro', selBairro], ['quartos', selQuartos],
+  ['ordem', selOrdem], ['min', inpMin], ['max', inpMax], ['q', inpBusca],
+];
+
+function gravarUrl(){{
+  const p = new URLSearchParams();
+  for (const [nome, campo] of CAMPOS_URL){{
+    const v = campo.value;
+    if (v && v !== '0' && v !== 'relevancia') p.set(nome, v);
+  }}
+  const marcados = Object.entries(chips)
+    .filter(([, c]) => c.getAttribute('aria-pressed') === 'true').map(([k]) => k);
+  if (marcados.length) p.set('sinais', marcados.join(','));
+  if (abas.fontes.getAttribute('aria-selected') === 'true') p.set('aba', 'fontes');
+  const s = p.toString();
+  // Abrir por duplo clique (file://) ou de um data: URL dá origem nula, e aí
+  // replaceState levanta SecurityError. Sem a guarda, a exceção sobe pelo
+  // render() e a lista inteira deixa de ser desenhada -- o link
+  // compartilhável não pode custar o dashboard.
+  try {{
+    history.replaceState(null, '', s ? '?' + s : location.pathname);
+  }} catch (e) {{}}
+}}
+
+function lerUrl(){{
+  const p = new URLSearchParams(location.search);
+  // cidade primeiro: a lista de bairros depende dela
+  if (p.has('cidade')) selCidade.value = p.get('cidade');
+  preencherBairros();
+  for (const [nome, campo] of CAMPOS_URL){{
+    if (nome !== 'cidade' && p.has(nome)) campo.value = p.get(nome);
+  }}
+  const marcados = (p.get('sinais') || '').split(',').filter(Boolean);
+  marcados.forEach(k => chips[k] && chips[k].setAttribute('aria-pressed', 'true'));
+  mostrarAba(p.get('aba') === 'fontes' ? 'fontes' : 'imoveis', false);
+}}
+
+lerUrl();
 render();
 </script>
 </body>

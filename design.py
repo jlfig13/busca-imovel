@@ -207,6 +207,65 @@ a{color:inherit;}
 .pulso-val small{font-size:13px; font-weight:400; color:var(--tinta-suave); letter-spacing:0;}
 .pulso-item.destaque .pulso-val{color:var(--ocre);}
 
+/* ---------- abas ---------- */
+/* Duas leituras diferentes do mesmo banco: o catálogo (o que alugar) e a
+   operação (quais fontes ainda valem o tempo de runner). Misturar as duas
+   numa página só faria a segunda ser rolada por cima todo dia. */
+.abas{
+  display:flex; gap:2px; border-bottom:1px solid var(--linha);
+  margin-bottom:14px;
+}
+.aba{
+  height:38px; padding:0 14px; cursor:pointer;
+  border:0; border-bottom:2px solid transparent; background:transparent;
+  color:var(--tinta-suave); font-family:var(--sans); font-size:14px; font-weight:550;
+  display:inline-flex; align-items:center; gap:7px;
+}
+.aba:hover{color:var(--tinta);}
+.aba[aria-selected="true"]{color:var(--tinta); border-bottom-color:var(--mar);}
+.aba-n{
+  font-family:var(--mono); font-size:11px; color:var(--tinta-fraca);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ---------- rendimento por fonte ---------- */
+/* Saúde responde "quebrou?"; rendimento responde "entrega?". A decisão de
+   desligar uma fonte se toma na segunda pergunta, e ela precisa de duas
+   colunas lado a lado: o que a fonte traz e o que só ela traz. */
+.rend{margin:6px 0 10px;}
+.rend-nota{
+  color:var(--tinta-suave); font-size:13px; line-height:1.6;
+  margin:0 0 16px; max-width:62ch;
+}
+.rend-rolagem{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+.rend table{border-collapse:collapse; width:100%; min-width:640px; font-size:12.5px;}
+.rend th{
+  font-family:var(--mono); font-size:10px; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--tinta-fraca); font-weight:600;
+  text-align:left; padding:7px 10px; border-bottom:1px solid var(--linha);
+  white-space:nowrap;
+}
+.rend td{
+  padding:9px 10px; border-bottom:1px solid var(--linha);
+  font-variant-numeric:tabular-nums; vertical-align:middle;
+}
+.rend td.n{text-align:right;}
+.rend tr:hover td{background:var(--superficie);}
+.rend .fonte{font-weight:600;}
+/* Barra proporcional: comparar 30 com 2 numa coluna de números exige
+   contar dígitos; a barra resolve no relance. */
+.barra{
+  display:block; height:5px; border-radius:3px; background:var(--mar);
+  min-width:2px; margin-top:4px;
+}
+.barra.vazia{background:var(--linha-forte);}
+.rend .aviso td{background:var(--atencao-lavado);}
+.rend .aviso .fonte{color:var(--atencao);}
+.rend-legenda{
+  color:var(--tinta-fraca); font-size:11.5px; line-height:1.7;
+  margin-top:12px; font-family:var(--mono);
+}
+
 /* ---------- filtros ---------- */
 .filtros{
   display:flex; flex-wrap:wrap; gap:8px; align-items:center;
@@ -547,6 +606,7 @@ a{color:inherit;}
   .acoes{margin-left:0; width:100%;}
   .btn-abrir,.btn-ofertas{height:42px; flex:1 1 auto; justify-content:center;}
   .ofertas{padding:12px 14px 14px;}
+  .aba{padding:0 10px; font-size:13.5px;}
   .contagem{padding-top:10px;}
 }
 

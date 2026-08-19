@@ -52,9 +52,10 @@ def rodar():
     log.info("Iniciando monitor de apartamentos")
     log.info(f"Filtros: {config.FILTROS}")
 
-    # Migração única e idempotente: o histórico anterior à Fase 3 existe só
-    # em historico_precos, e as datas de julho não podem ser recoletadas.
-    db.migrar_historico_para_evento()
+    # Migra o que restar do snapshot antigo e derruba a tabela. O histórico
+    # anterior à Fase 3 existe só em historico_precos e as datas de julho não
+    # podem ser recoletadas -- por isso migra ANTES de derrubar, sempre.
+    db.aposentar_historico_precos()
 
     execucao_id = db.abrir_execucao(_versao_codigo())
     todos_itens = []
@@ -188,7 +189,9 @@ def rodar():
     imoveis = db.consolidar_imoveis(todos_itens)
 
     report.gerar_excel(imoveis)
-    caminho_dashboard = dashboard.gerar_dashboard(imoveis, db.resumo_fontes(execucao_id))
+    caminho_dashboard = dashboard.gerar_dashboard(
+        imoveis, db.resumo_fontes(execucao_id), db.rendimento_por_fonte()
+    )
 
     saude = db.resumo_fontes(execucao_id)
     degradadas = [f for f in saude if f["status"] in (db.FALHA, db.BLOQUEADO, db.PARCIAL)]
