@@ -1,12 +1,13 @@
 name: Monitor de Apartamentos
 
-# Roda 1x por semana (segunda 09:00 BRT = 12:00 UTC) + permite disparo manual
-# pela aba Actions. Faz a raspagem, persiste o banco de volta no repo (pra
-# manter histórico de preço/"visto pela primeira vez" entre rodadas) e
-# publica o dashboard no GitHub Pages.
+# Roda TODO DIA às 07:00 BRT (10:00 UTC) + permite disparo manual.
+#
+# Era semanal. Aluguel gira rápido: um imóvel bom some em dias, e com
+# cadência semanal a série de preço nunca capturava variação -- medido, 3
+# execuções produziram 261 pontos de histórico e ZERO mudança observada.
 on:
   schedule:
-    - cron: "0 12 * * 1"
+    - cron: "0 10 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -14,13 +15,17 @@ permissions:
   pages: write
   id-token: write
 
+# Duas rodadas simultâneas brigariam pelo push do banco. cancel-in-progress
+# fica FALSE de propósito: a rodada em andamento já coletou dados que seriam
+# perdidos -- melhor enfileirar do que descartar.
 concurrency:
-  group: pages
+  group: monitor-apartamentos
   cancel-in-progress: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,8 +49,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add saida/apartamentos.db saida/apartamentos.xlsx
-          git diff --staged --quiet && echo "Sem mudanças pra commitar" || git commit -m "chore: atualiza dados da rodada semanal [skip ci]"
-          git push
+          if git diff --staged --quiet; then
+            echo "Sem mudanças pra commitar"
+            exit 0
+          fi
+          git commit -m "chore: atualiza dados da rodada diária [skip ci]"
+          # Rebase + retry antes do push. O banco é binário: se outra rodada
+          # (ou um run manual) commitou nesse meio-tempo, o push é rejeitado
+          # e a rodada inteira perde o histórico -- sem falhar visivelmente,
+          # porque o passo anterior já tinha passado (P-10 da auditoria).
+          for tentativa in 1 2 3; do
+            if git push; then
+              echo "push OK na tentativa $tentativa"
+              exit 0
+            fi
+            echo "push rejeitado; rebase e nova tentativa ($tentativa)"
+            git pull --rebase --strategy-option=ours || git rebase --abort
+            sleep $((tentativa * 5))
+          done
+          echo "::error::não foi possível persistir o banco após 3 tentativas"
+          exit 1
 
       - name: Preparar artefato do Pages
         run: |

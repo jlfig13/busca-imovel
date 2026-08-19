@@ -61,14 +61,31 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
         if not utils.titulo_aceito(titulo):
             continue
 
-        preco = utils.parse_preco_total(bloco)
+        custo = utils.decompor_custo(bloco)
+        preco = custo["custo_mensal_total"]
         quartos = utils.parse_quartos(bloco)
         area = utils.parse_area(bloco)
 
-        bairro = None
-        m = re.search(r"[Bb]airro[:\s]+([A-Za-zÀ-ú][A-Za-zÀ-ú ]{1,29})", bloco)
-        if m:
-            bairro = m.group(1).strip()
+        # Descarta anúncio que a própria fonte declara desatualizado.
+        # O Portal CRECI carimba "Atualizado em: dd/mm/aaaa" no card e boa
+        # parte do inventário está parada há meses.
+        recente, idade = utils.anuncio_recente(bloco)
+        if not recente:
+            resultados.stats["desatualizados"] += 1
+            log.debug(f"[{site['nome']}] desatualizado ({idade} dias): {url_completa}")
+            continue
+
+        # Endereço: slug da URL primeiro (gerado pelo portal a partir do
+        # cadastro), depois o texto do card, depois os regexes antigos.
+        # Ambos validados contra a lista canônica de bairros -- foi regex
+        # sem validação que gravou "Pernambuco" como bairro (P-05/P-18).
+        logradouro, bairro, cidade_txt = utils.endereco_do_texto(bloco)
+        if not bairro:
+            bairro = utils.bairro_do_slug(url_completa)
+        if not bairro:
+            m = re.search(r"[Bb]airro[:\s]+([A-Za-zÀ-ú][A-Za-zÀ-ú ]{1,29})", bloco)
+            if m:
+                bairro = m.group(1).strip()
         if not bairro:
             m = re.search(r"[Qq]uartos?\s+([A-Za-zÀ-ú][A-Za-zÀ-ú ]{1,28}?)\s+\d+\s*m[²2]", titulo)
             if m:
@@ -77,28 +94,50 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
             m = re.search(r"m[eê]s([A-ZÀ-Ú][A-Za-zÀ-ú ]+?)Apartamento", titulo)
             if m:
                 bairro = m.group(1).strip()
+        if not bairro:
+            # último recurso: bairro canônico citado no começo do título
+            bairro = utils.bairro_no_inicio(titulo)
 
         item = {
-            "titulo": titulo,
+            # titulo definitivo é gerado abaixo, a partir dos campos
+            # normalizados; o raspado vira titulo_origem (P-06)
+            "titulo_origem": titulo,
             "bairro": bairro,
-            "cidade": site.get("cidade", "Recife"),
+            "logradouro": logradouro,
+            "idade_dias": idade,
+            "cidade": utils.cidade_do_bairro(bairro) or cidade_txt
+                      or utils.cidade_do_slug(url_completa)
+                      or site.get("cidade", "Recife"),
             "preco": preco,
             "quartos": quartos,
             "area_m2": area,
             "url": url_completa,
             "site": site["nome"],
+            **custo,
         }
-        if utils.passa_no_filtro(item["preco"], item["quartos"], item["area_m2"], item["cidade"]):
+        item["titulo"] = utils.gerar_titulo(item)
+        veredito, motivos = utils.avaliar_filtro(
+            item["preco"], item["quartos"], item["area_m2"], item["cidade"]
+        )
+        if veredito == utils.APROVADO:
             resultados.append(item)
+        elif veredito == utils.INDETERMINADO:
+            # Não entra na lista principal: sem preço nem forma, é um link
+            # com um título. Contabilizado para virar fila de enriquecimento.
+            resultados.stats["indeterminados"] += 1
+            log.debug(f"[{site['nome']}] indeterminado ({', '.join(motivos)}): {url_completa}")
+        else:
+            resultados.stats["reprovados"] += 1
 
     return novos
 
 
 def scrape(site: dict) -> list[dict]:
-    resultados = []
+    resultados = utils.ListaComStats()
     links_vistos = set()
     max_paginas = site.get("max_paginas", 10)
     padrao_paginacao = site.get("padrao_paginacao", "?pagina={n}")
+    pagina = 1
 
     for pagina in range(1, max_paginas + 1):
         if pagina == 1:
@@ -107,15 +146,26 @@ def scrape(site: dict) -> list[dict]:
             sep = "&" if "?" in site["url_listagem"] else "?"
             url = site["url_listagem"] + sep + padrao_paginacao.format(n=pagina).lstrip("?")
 
-        html = utils.fetch(url)
+        html, motivo = utils.get_html_diag(url)
         if not html:
             if pagina == 1:
-                log.error(f"[{site['nome']}] não foi possível buscar a listagem")
+                # Distinguir "falhei ao consultar" de "não há imóveis" é o
+                # que impede main.py de concluir que a fonte ficou vazia.
+                resultados.stats["motivo"] = motivo
+                resultados.stats["bloqueado"] = motivo == utils.FALHA_BLOQUEIO
+                resultados.stats["erros"] = 1
+                log.error(f"[{site['nome']}] não foi possível buscar a listagem ({motivo})")
             break
 
         novos = _extrair_pagina(html, site, links_vistos, resultados)
         if novos == 0:
             break  # sem links novos = fim da paginação
 
-    log.info(f"[{site['nome']}] {len(resultados)} imóveis dentro do filtro (de {len(links_vistos)} anúncios em {pagina} página(s))")
+    resultados.stats["brutos"] = len(links_vistos)
+    log.info(
+        f"[{site['nome']}] {len(resultados)} imóveis dentro do filtro "
+        f"(de {len(links_vistos)} anúncios em {pagina} página(s); "
+        f"{resultados.stats['indeterminados']} indeterminados, "
+        f"{resultados.stats['desatualizados']} desatualizados)"
+    )
     return resultados

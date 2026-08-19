@@ -10,6 +10,7 @@ import re
 import time
 from urllib.parse import urljoin
 
+import extracao_jsonld
 import utils
 from utils import log
 
@@ -26,6 +27,16 @@ _UA = (
 # rodando contra o HTML real do site (5 anúncios distintos, mesmo padrão).
 _RE_REMAX_NUMEROS = re.compile(
     r"Mensal\s*\n+(\d+)\s*\n+(\d+)\s*\n+(\d+)\s*\n+([\d.,]+)\s*\n+(\d+)\s*\n+Apartamento"
+)
+
+# padrão OLX: mesma ideia do REMAX -- números sem rótulo. O card sai como
+# "Parque das Rosas Condomínio\n42m²\n2\n1\n1\n...\nR$ 1.300\nRecife, Torre",
+# ou seja área com unidade e, logo depois, quartos / banheiros / vagas nus.
+# Era a causa de todo anúncio do OLX entrar sem quartos: parse_quartos
+# procura a palavra "quarto", que não existe no card.
+# Confirmado contra o HTML ao vivo em 18/08/2026.
+_RE_OLX_NUMEROS = re.compile(
+    r"([\d.,]+)\s*m²\s*\n+(\d+)\s*\n+(\d+)\s*\n+(\d+)\b"
 )
 
 
@@ -49,10 +60,28 @@ def _extrair_cards(page_obj, seletor_href: str) -> list[dict]:
     descrição + preço/quartos/área -- todo card do Imovelweb ficava sem
     dado nenhum. Confirmado medindo o tamanho real de cada nível no DOM
     ao vivo."""
-    js = """els => {
+    js = """(els, seletor) => {
         const MAX_SUBIDA = 6;
         const MAX_LEN = 4000;
+        const MAX_EXTRA = 600;
         const seen = new Set();
+
+        // Um elemento que aponta para mais de um anúncio DISTINTO é a LISTA,
+        // não um card.
+        //
+        // Contar "R$" não serve: um card legítimo tem vários -- "R$ 2.386 /
+        // IPTU R$ 214 / Condomínio R$ 930" são três num anúncio só, e card
+        // com queda de preço mostra o valor antigo e o novo.
+        //
+        // Contar <a> também não serve: o card do OLX tem dois links para o
+        // MESMO anúncio (a foto e o título), o que marcaria todo card como
+        // lista e deixaria 44 de 49 anúncios indeterminados.
+        const ehLista = el => {
+            const hrefs = new Set();
+            for (const a of el.querySelectorAll(seletor)) hrefs.add(a.href);
+            return hrefs.size > 1;
+        };
+
         return els.map(e => {
             const href = e.href;
             if (seen.has(href)) return null;
@@ -63,16 +92,67 @@ def _extrair_cards(page_obj, seletor_href: str) -> list[dict]:
                 if (!el.parentElement) break;
                 el = el.parentElement;
                 const texto = el.innerText || "";
-                if (texto.length > MAX_LEN) break;
+                // Subir até o container da lista faz todo anúncio herdar
+                // preço, área e quartos do vizinho -- medido no OLX: 20
+                // apartamentos distintos saíram com valores idênticos.
+                if (texto.length > MAX_LEN || ehLista(el)) break;
                 melhorTexto = texto;
-                if (texto.includes("R$")) break;
+                if (texto.includes("R$")) {
+                    // Sobe UM nível a mais quando ele ainda é o mesmo card.
+                    // No OLX o nível com o preço tem 103 chars e termina
+                    // antes do endereço; o pai (SECTION, 185) é que traz
+                    // "Recife, Torre" -- parar no primeiro "R$" era a razão
+                    // de todo card do OLX vir sem bairro.
+                    const pai = el.parentElement;
+                    if (pai && !ehLista(pai)) {
+                        const textoPai = pai.innerText || "";
+                        if (textoPai.length > texto.length &&
+                            textoPai.length <= MAX_EXTRA) {
+                            melhorTexto = textoPai;
+                        }
+                    }
+                    break;
+                }
             }
             return {href, text: melhorTexto};
         }).filter(Boolean);
     }"""
     return page_obj.eval_on_selector_all(
-        f'a[href*="{seletor_href}"]', js
+        f'a[href*="{seletor_href}"]', js, f'a[href*="{seletor_href}"]'
     )
+
+
+def _coletar_rolando(page_obj, seletor_href: str, passo: int = 700,
+                     max_passos: int = 30) -> list[dict]:
+    """Extrai os cards rolando a página, acumulando o que aparece.
+
+    Extrair uma vez só não basta nos portais que virtualizam a lista: o OLX
+    mantém o link no DOM desde o início mas deixa o innerText VAZIO enquanto
+    o card não entra na viewport, e descarta o conteúdo de novo quando ele
+    sai. Medido: 44 dos 49 anúncios chegavam sem texto nenhum, e o sintoma
+    enganava porque os poucos cards acima da dobra funcionavam bem.
+
+    Rolar e extrair a cada passo resolve os dois casos -- lazy-load simples
+    e virtualização com descarte. Fica com o texto mais completo já visto
+    para cada href, então um card que aparece parcialmente num passo não
+    sobrescreve a versão boa de outro."""
+    acumulado: dict[str, str] = {}
+    for _ in range(max_passos):
+        for c in _extrair_cards(page_obj, seletor_href):
+            href, texto = c.get("href", ""), c.get("text", "")
+            if href and len(texto) > len(acumulado.get(href, "")):
+                acumulado[href] = texto
+        try:
+            fim = page_obj.evaluate(
+                "() => window.innerHeight + window.scrollY >= document.body.scrollHeight - 40"
+            )
+            if fim:
+                break
+            page_obj.mouse.wheel(0, passo)
+            page_obj.wait_for_timeout(220)
+        except Exception:
+            break  # rolagem é otimização; falhar aqui não perde o que já veio
+    return [{"href": h, "text": t} for h, t in acumulado.items()]
 
 
 def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> dict | None:
@@ -90,16 +170,24 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
     # busca de cidade única, exceto OLX: busca a região metropolitana
     # inteira, então o padrão "Cidade, Bairro" abaixo detecta a cidade
     # real por item em vez de usar o padrão do site.
-    cidade = cidade_padrao
+    # Endereço estruturado do card. No Imovelweb ele vem como
+    # "Av. Min. Marcos Freire\nCasa Caiada, Olinda" -- era a fonte dos
+    # imóveis sem bairro que sobravam, e ainda entrega o logradouro.
+    logradouro, bairro_txt, cidade_txt = utils.endereco_do_texto(texto)
 
-    # Bairro: múltiplos padrões em ordem de prioridade
-    bairro = None
+    cidade = cidade_txt or utils.cidade_do_slug(url) or cidade_padrao
+
+    # Bairro: texto estruturado, depois slug da URL (ambos validados contra
+    # a lista canônica), e só então os padrões por portal. Ver P-18: regex
+    # sobre texto renderizado sem validação gravou "Pernambuco" como bairro.
+    bairro = bairro_txt or utils.bairro_do_slug(url)
     # padrão Viva Real / Zap: "em\nBairro, Cidade"
     # \b é essencial: sem ele "em" casava dentro de qualquer palavra terminada
     # em "em" (ex: "Boa Viagem"), roubando a linha errada como bairro.
-    m = re.search(r"\bem\b\s*\n([A-Za-zÀ-ú ]+),\s*\w", texto)
-    if m:
-        bairro = m.group(1).strip()
+    if not bairro:
+        m = re.search(r"\bem\b\s*\n([A-Za-zÀ-ú ]+),\s*\w", texto)
+        if m:
+            bairro = m.group(1).strip()
     # padrão REMAX: endereço termina "...Bairro, Recife, Pernambuco, CEP"
     # (confirmado ao vivo). Tem que vir ANTES do padrão OLX abaixo: senão
     # "Recife, Pernambuco" (cidade+ESTADO) casa por engano com o padrão
@@ -137,10 +225,16 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
         if m:
             bairro = m.group(1).strip()
 
+    # bairro conhecido manda na cidade: o padrão do site diz "Recife" mesmo
+    # quando o anúncio é de Casa Caiada (Olinda) ou Candeias (Jaboatão)
+    cidade = utils.cidade_do_bairro(bairro) or cidade
+
     quartos = utils.parse_quartos(texto)
     area = utils.parse_area(texto)
-    preco = utils.parse_preco_total(texto)
+    custo = utils.decompor_custo(texto)
+    preco = custo["custo_mensal_total"]
 
+    vagas = None
     if quartos is None or area is None:
         m_remax = _RE_REMAX_NUMEROS.search(texto)
         if m_remax:
@@ -148,17 +242,36 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
                 quartos = int(m_remax.group(1))
             if area is None:
                 area = utils._parse_valor_br(m_remax.group(4))
+        m_olx = _RE_OLX_NUMEROS.search(texto)
+        if m_olx:
+            if area is None:
+                area = utils._parse_valor_br(m_olx.group(1))
+            if quartos is None:
+                quartos = int(m_olx.group(2))
+            vagas = int(m_olx.group(4))
 
-    return {
-        "titulo": titulo,
+    # banheiros no card ("4 ban." / "2 banheiros"); o JSON-LD completa depois
+    banheiros = None
+    m_ban = re.search(r"(\d+)\s*(?:ban\.|banheiro)", texto, re.IGNORECASE)
+    if m_ban:
+        banheiros = int(m_ban.group(1))
+
+    item = {
+        "titulo_origem": titulo,
         "bairro": bairro,
+        "logradouro": logradouro,
         "cidade": cidade,
         "preco": preco,
         "quartos": quartos,
+        "banheiros": banheiros,
+        "vagas": vagas,
         "area_m2": area,
         "url": url,
         "site": site_nome,
+        **custo,
     }
+    item["titulo"] = utils.gerar_titulo(item)
+    return item
 
 
 def scrape(site: dict) -> list[dict]:
@@ -166,14 +279,18 @@ def scrape(site: dict) -> list[dict]:
         from playwright.sync_api import sync_playwright
     except ImportError:
         log.warning(f"[{site['nome']}] Playwright não instalado. Pulando.")
-        return []
+        indisponivel = utils.ListaComStats()
+        indisponivel.stats["motivo"] = "playwright não instalado"
+        indisponivel.stats["erros"] = 1
+        return indisponivel
 
-    resultados = []
+    resultados = utils.ListaComStats()
     vistos = set()
     max_paginas = site.get("max_paginas", 5)
     seletor_href = site.get("seletor_href", "/imovel/")
     wait_until = site.get("wait_until", "networkidle")
     cidade_padrao = site.get("cidade", "Recife")
+    espera_ms = site.get("espera_ms", 2500)
     base_url = site["url_listagem"]
     sep = "&" if "?" in base_url else "?"
     # padrao_url_pagina: alguns sites (ex: Imovelweb) paginam por sufixo no
@@ -215,10 +332,30 @@ def scrape(site: dict) -> list[dict]:
                 except Exception:
                     pass  # se não aparecer, tentamos mesmo assim
 
-                time.sleep(1)
-                cards = _extrair_cards(page, seletor_href)
+                # Espera de acomodação. O seletor acima só garante que o
+                # PRIMEIRO link existe -- preço, área e endereço chegam
+                # depois, em outro passe de render.
+                #
+                # 1 s era pouco para o OLX: os links apareciam, o preço não,
+                # e a subida na árvore terminava num nível sem "R$" -- 44 de
+                # 49 anúncios saíam indeterminados. Com 4 s, os mesmos cards
+                # trazem preço, quartos, área e bairro.
+                time.sleep(espera_ms / 1000)
+
+                cards = _coletar_rolando(page, seletor_href)
+
+                # Uma página de desafio anti-bot devolve HTTP 200 e nenhum
+                # card -- idêntico, para o código antigo, a "acabaram os
+                # imóveis". Detectar aqui é o que evita que bloqueio vire
+                # "a fonte esvaziou" lá na frente.
+                if not cards and utils.detectar_bloqueio(page.content()):
+                    resultados.stats["bloqueado"] = True
+                    resultados.stats["motivo"] = utils.FALHA_BLOQUEIO
+                    log.warning(f"[{site['nome']}] p{pagina}: bloqueio anti-bot detectado")
+                    break
 
                 novos = 0
+                candidatos = []
                 for c in cards:
                     href = c.get("href", "")
                     if href in vistos:
@@ -226,10 +363,32 @@ def scrape(site: dict) -> list[dict]:
                     vistos.add(href)
                     novos += 1
                     item = _parse_card(c, site["nome"], cidade_padrao)
-                    if item and utils.passa_no_filtro(
+                    if not item:
+                        resultados.stats["reprovados"] += 1
+                        continue
+                    candidatos.append(item)
+
+                # Enriquece ANTES de filtrar: quartos e área vindos do
+                # JSON-LD podem resgatar um item que o texto do card deixaria
+                # indeterminado. Filtrar primeiro jogaria fora exatamente os
+                # anúncios que os dados estruturados salvariam.
+                indice = extracao_jsonld.indexar_por_url(page.content())
+                if indice:
+                    extracao_jsonld.enriquecer(candidatos, indice)
+
+                for item in candidatos:
+                    veredito, motivos = utils.avaliar_filtro(
                         item["preco"], item["quartos"], item["area_m2"], item["cidade"]
-                    ):
+                    )
+                    if veredito == utils.APROVADO:
                         resultados.append(item)
+                    elif veredito == utils.INDETERMINADO:
+                        resultados.stats["indeterminados"] += 1
+                        log.debug(
+                            f"[{site['nome']}] indeterminado ({', '.join(motivos)}): {item['url']}"
+                        )
+                    else:
+                        resultados.stats["reprovados"] += 1
 
                 log.info(f"[{site['nome']}] p{pagina}: {novos} links novos")
                 if novos == 0:
@@ -238,7 +397,14 @@ def scrape(site: dict) -> list[dict]:
             browser.close()
     except Exception as e:
         log.warning(f"[{site['nome']}] Playwright falhou: {e}")
-        return []
+        resultados.stats["erros"] += 1
+        resultados.stats["motivo"] = str(e)[:180]
+        resultados.stats["brutos"] = len(vistos)
+        return resultados
 
-    log.info(f"[{site['nome']}] {len(resultados)} imóveis dentro do filtro (de {len(vistos)} anúncios)")
+    resultados.stats["brutos"] = len(vistos)
+    log.info(
+        f"[{site['nome']}] {len(resultados)} imóveis dentro do filtro "
+        f"(de {len(vistos)} anúncios; {resultados.stats['indeterminados']} indeterminados)"
+    )
     return resultados
