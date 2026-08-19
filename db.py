@@ -5,8 +5,9 @@ instalar). Guarda todo imóvel já visto, quando foi visto pela primeira
 vez e pela última vez, para sabermos o que é "novo" hoje.
 """
 import json
+import os
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import config
 import utils
@@ -444,7 +445,13 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
         else:
             primeiro_visto = hoje
             item["novo"] = True
-            registrar_evento(cur, item["url"], EV_CRIADO, execucao_id=execucao_id)
+            # O preço inicial vai no CRIADO: é o primeiro ponto da série.
+            # Sem ele, um imóvel que nunca mudou de preço não teria ponto
+            # nenhum, e a série reconstruída começaria só na primeira
+            # alteração -- perdendo justamente o valor de referência.
+            registrar_evento(cur, item["url"], EV_CRIADO, "custo_mensal_total",
+                             depois=item.get("custo_mensal_total") or item.get("preco"),
+                             execucao_id=execucao_id)
 
         item["primeiro_visto"] = primeiro_visto
 
@@ -500,15 +507,173 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
                 primeiro_visto, hoje,
             ),
         )
-        if item.get("preco") is not None:
-            cur.execute(
-                "INSERT OR IGNORE INTO historico_precos (url, data, preco) VALUES (?, ?, ?)",
-                (item["url"], hoje, item["preco"]),
-            )
+        # historico_precos NÃO é mais escrito. A série vem de `evento`, que
+        # grava só mudança (verificado: 375 snapshots equivalem a 202 eventos,
+        # zero divergência em 195 URLs). A tabela fica congelada como rede de
+        # segurança até algumas rodadas diárias confirmarem a troca em
+        # produção -- só então vale removê-la.
 
     conn.commit()
     conn.close()
     return itens
+
+
+# Anúncio INATIVO mais velho que isto é removido, junto com seus eventos.
+# 180 dias porque a análise de mercado usa janela de 90 dias e a detecção de
+# republicação olha 90 -- o dobro dá folga para as duas sem guardar lixo.
+DIAS_PARA_PODA = 180
+
+
+def manutencao(vacuum: bool = False) -> dict:
+    """Poda anúncios inativos antigos e, opcionalmente, compacta o banco.
+
+    O banco é comitado no repositório a cada rodada e SQLite é binário: cada
+    commit reescreve o arquivo inteiro. Com cadência diária e sem poda, o
+    repositório ganha centenas de KB por dia de histórico git irrecuperável.
+
+    Só remove o que está INATIVO há mais de DIAS_PARA_PODA -- imóvel ativo,
+    suspeito ou recém-desaparecido fica. E preserva a linha em `imovel` se ela
+    ainda tiver outro anúncio vivo: apagar o anúncio não pode apagar o imóvel.
+    """
+    limite = (date.today() - timedelta(days=DIAS_PARA_PODA)).isoformat()
+    conn = conectar()
+    cur = conn.cursor()
+
+    alvos = [r[0] for r in cur.execute(
+        """SELECT url FROM imoveis
+           WHERE status = ? AND COALESCE(ultima_confirmacao, ultimo_visto) < ?""",
+        (INATIVO, limite),
+    )]
+
+    if alvos:
+        marcadores = ",".join("?" * len(alvos))
+        cur.execute(f"DELETE FROM evento WHERE url IN ({marcadores})", alvos)
+        cur.execute(f"DELETE FROM imovel_anuncio WHERE url IN ({marcadores})", alvos)
+        cur.execute(f"DELETE FROM historico_precos WHERE url IN ({marcadores})", alvos)
+        cur.execute(f"DELETE FROM imoveis WHERE url IN ({marcadores})", alvos)
+        # imóvel que ficou sem nenhum anúncio some também
+        cur.execute(
+            "DELETE FROM imovel WHERE id NOT IN "
+            "(SELECT DISTINCT imovel_id FROM imoveis WHERE imovel_id IS NOT NULL)"
+        )
+    conn.commit()
+
+    tamanho_antes = os.path.getsize(config.ARQUIVO_DB)
+    if vacuum:
+        conn.execute("VACUUM")
+        conn.commit()
+    conn.close()
+    tamanho_depois = os.path.getsize(config.ARQUIVO_DB)
+
+    r = {
+        "podados": len(alvos),
+        "kb_antes": tamanho_antes // 1024,
+        "kb_depois": tamanho_depois // 1024,
+    }
+    if alvos or vacuum:
+        log.info(
+            f"Manutenção: {r['podados']} anúncio(s) inativo(s) removido(s), "
+            f"banco {r['kb_antes']} KB -> {r['kb_depois']} KB"
+        )
+    return r
+
+
+def migrar_historico_para_evento() -> int:
+    """Converte historico_precos em eventos. Uma vez, idempotente.
+
+    O snapshot diário é a única fonte do histórico anterior à Fase 3 -- as
+    datas de julho existem só ali. Trocar a leitura para `evento` sem migrar
+    apagaria essa série da interface, e ela não pode ser recoletada.
+
+    Converte só as MUDANÇAS: o snapshot regravava o mesmo preço todos os
+    dias, então o primeiro ponto vira CRIADO e cada valor diferente do
+    anterior vira PRECO_ALTERADO. Repetição é descartada -- é exatamente o
+    desperdício que motivou a troca.
+
+    Idempotente por marca própria: reexecutar não duplica.
+    """
+    conn = conectar()
+    cur = conn.cursor()
+
+    ja_feito = cur.execute(
+        "SELECT COUNT(*) FROM evento WHERE tipo = ?", ("MIGRACAO_HISTORICO",)
+    ).fetchone()[0]
+    if ja_feito:
+        conn.close()
+        return 0
+
+    linhas = cur.execute(
+        "SELECT url, data, preco FROM historico_precos "
+        "WHERE preco IS NOT NULL ORDER BY url, data ASC"
+    ).fetchall()
+
+    criados = 0
+    anterior_url = None
+    anterior_preco = None
+    for url, data, preco in linhas:
+        if url != anterior_url:
+            tipo, antes = EV_CRIADO, None
+            anterior_url, anterior_preco = url, preco
+        elif abs(preco - anterior_preco) >= 0.01:
+            tipo, antes = EV_PRECO, anterior_preco
+            anterior_preco = preco
+        else:
+            continue  # mesmo preço de novo: nada mudou
+
+        delta = delta_pct = None
+        if antes:
+            delta = round(preco - antes, 2)
+            delta_pct = round(100 * (preco - antes) / antes, 2)
+        cur.execute(
+            """INSERT INTO evento (url, tipo, campo, valor_antes, valor_depois,
+                                   delta, delta_pct, observado_em)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (url, tipo, "custo_mensal_total",
+             None if antes is None else str(antes), str(preco),
+             delta, delta_pct, f"{data}T00:00:00"),
+        )
+        criados += 1
+
+    # marca a migração como feita
+    cur.execute(
+        """INSERT INTO evento (tipo, campo, valor_depois, observado_em)
+           VALUES (?,?,?,?)""",
+        ("MIGRACAO_HISTORICO", "historico_precos", str(criados),
+         datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
+    conn.close()
+    if criados:
+        log.info(f"Migração: {len(linhas)} snapshots de preço -> {criados} eventos")
+    return criados
+
+
+def obter_serie_precos(urls: list[str]) -> dict[str, list]:
+    """Série de preço por URL, reconstruída dos eventos.
+
+    Substitui obter_historico_todos (que lia historico_precos). Cada evento
+    de preço carrega o valor novo; a série é a sequência ordenada deles.
+    Limitada aos últimos 30 pontos por imóvel, como antes."""
+    if not urls:
+        return {}
+    conn = conectar()
+    marcadores = ",".join("?" * len(urls))
+    cur = conn.execute(
+        f"""SELECT url, observado_em, valor_depois FROM evento
+            WHERE url IN ({marcadores}) AND tipo IN (?, ?)
+              AND valor_depois IS NOT NULL
+            ORDER BY url, observado_em ASC""",
+        (*urls, EV_CRIADO, EV_PRECO),
+    )
+    resultado: dict[str, list] = {}
+    for url, quando, valor in cur:
+        try:
+            preco = float(valor)
+        except (TypeError, ValueError):
+            continue
+        resultado.setdefault(url, []).append([quando[:10], preco])
+    conn.close()
+    return {u: v[-30:] for u, v in resultado.items()}
 
 
 def _hash_texto(texto: str | None) -> str | None:
@@ -711,8 +876,11 @@ def consolidar_imoveis(itens: list[dict]) -> list[dict]:
 
 
 def obter_historico_todos(urls: list[str]) -> dict[str, list]:
-    """Retorna dict url → [(data, preco), ...] ordenado por data asc,
-    limitado às últimas 30 entradas por imóvel."""
+    """CONGELADA. Lê o snapshot antigo, que não recebe escrita nova.
+
+    Mantida só para comparar com obter_serie_precos e confirmar em produção
+    que a troca não perdeu série. Sai junto com a tabela historico_precos
+    depois de algumas rodadas diárias validando a equivalência."""
     if not urls:
         return {}
     conn = conectar()

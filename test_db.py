@@ -250,3 +250,77 @@ def test_descricao_alterada_gera_evento(banco):
                      (banco.EV_DESCRICAO,)).fetchone()[0]
     conn.close()
     assert n == 1
+
+
+# ---------------------------------------------------------------------------
+# Onda 1 -- série de preço vinda de evento, e manutenção
+# ---------------------------------------------------------------------------
+
+def test_criado_grava_o_preco_inicial(banco):
+    """Sem o preço no CRIADO, imóvel que nunca mudou de valor não teria
+    ponto nenhum na série."""
+    banco.salvar_execucao([_item(preco=2000.0)], fontes_confiaveis={"Zap"})
+    serie = banco.obter_serie_precos(["u1"])
+    assert serie["u1"] == [[serie["u1"][0][0], 2000.0]]
+
+
+def test_serie_acumula_mudancas_de_preco(banco):
+    banco.salvar_execucao([_item(preco=2000.0)], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([_item(preco=1800.0)], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([_item(preco=1800.0)], fontes_confiaveis={"Zap"})
+    valores = [p for _, p in banco.obter_serie_precos(["u1"])["u1"]]
+    # preço repetido não gera ponto novo -- era o desperdício do snapshot
+    assert valores == [2000.0, 1800.0]
+
+
+def test_migracao_do_historico_e_idempotente(banco):
+    conn = banco.conectar()
+    for data, preco in [("2026-07-01", 2000.0), ("2026-07-02", 2000.0),
+                        ("2026-07-03", 1900.0)]:
+        conn.execute("INSERT INTO historico_precos (url, data, preco) VALUES (?,?,?)",
+                     ("u9", data, preco))
+    conn.commit(); conn.close()
+
+    n1 = banco.migrar_historico_para_evento()
+    n2 = banco.migrar_historico_para_evento()
+    assert n1 == 2      # CRIADO 2000 + PRECO_ALTERADO 1900; o repetido é descartado
+    assert n2 == 0      # reexecutar não duplica
+    assert [p for _, p in banco.obter_serie_precos(["u9"])["u9"]] == [2000.0, 1900.0]
+
+
+def test_manutencao_preserva_anuncio_ativo(banco):
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    r = banco.manutencao()
+    assert r["podados"] == 0
+    conn = banco.conectar()
+    assert conn.execute("SELECT COUNT(*) FROM imoveis").fetchone()[0] == 1
+    conn.close()
+
+
+def test_manutencao_poda_inativo_antigo(banco):
+    from datetime import date, timedelta
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    velho = (date.today() - timedelta(days=banco.DIAS_PARA_PODA + 200)).isoformat()
+    conn = banco.conectar()
+    conn.execute("UPDATE imoveis SET status=?, ultima_confirmacao=? WHERE url='u1'",
+                 (banco.INATIVO, velho))
+    conn.commit(); conn.close()
+
+    r = banco.manutencao()
+    assert r["podados"] == 1
+    conn = banco.conectar()
+    assert conn.execute("SELECT COUNT(*) FROM imoveis").fetchone()[0] == 0
+    # eventos do anúncio removido também saem
+    assert conn.execute("SELECT COUNT(*) FROM evento WHERE url='u1'").fetchone()[0] == 0
+    conn.close()
+
+
+def test_manutencao_nao_poda_inativo_recente(banco):
+    from datetime import date, timedelta
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    recente = (date.today() - timedelta(days=10)).isoformat()
+    conn = banco.conectar()
+    conn.execute("UPDATE imoveis SET status=?, ultima_confirmacao=? WHERE url='u1'",
+                 (banco.INATIVO, recente))
+    conn.commit(); conn.close()
+    assert banco.manutencao()["podados"] == 0

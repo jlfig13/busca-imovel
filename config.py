@@ -198,46 +198,6 @@ SITES = [
         ),
     },
     {
-        "nome": "REMAX Recife",
-        "tipo": "revisar",
-        "url_listagem": "https://www.remax.com.br/pt-br/pesquisa/regiao-nordeste/pernambuco/recife/residencial-apartamento/alugar/",
-        "base_url": "https://www.remax.com.br",
-        "seletor_href": "/pt-br/imoveis/apartamento/",
-        "cidade": "Recife",
-        "max_paginas": 3,
-        "obs": (
-            "DESATIVADO em 18/08/2026 -- site reestruturado. A URL acima ainda "
-            "carrega (1,5 MB, HTTP 200, sem bloqueio anti-bot) mas não contém "
-            "mais nenhum anúncio: dos 136 links da página, zero casam com "
-            "'/pt-br/imoveis/apartamento/'. A busca migrou para "
-            "/listings?City=<id>&TransactionTypeUID=<id>. "
-            "É reestruturação de site, não bloqueio. Para reativar: fazer a "
-            "busca no site, copiar a URL /listings?... e descobrir o novo "
-            "padrão de link do anúncio. Volume histórico era baixo (5 imóveis "
-            "no total), então a prioridade é baixa."
-        ),
-    },
-    {
-        "nome": "REMAX Olinda",
-        "tipo": "revisar",
-        "url_listagem": "https://www.remax.com.br/pt-br/pesquisa/regiao-nordeste/pernambuco/olinda/residencial-apartamento/alugar/",
-        "base_url": "https://www.remax.com.br",
-        "seletor_href": "/pt-br/imoveis/apartamento/",
-        "cidade": "Olinda",
-        "max_paginas": 3,
-        "obs": (
-            "DESATIVADO em 18/08/2026 -- site reestruturado. A URL acima ainda "
-            "carrega (1,5 MB, HTTP 200, sem bloqueio anti-bot) mas não contém "
-            "mais nenhum anúncio: dos 136 links da página, zero casam com "
-            "'/pt-br/imoveis/apartamento/'. A busca migrou para "
-            "/listings?City=<id>&TransactionTypeUID=<id>. "
-            "É reestruturação de site, não bloqueio. Para reativar: fazer a "
-            "busca no site, copiar a URL /listings?... e descobrir o novo "
-            "padrão de link do anúncio. Volume histórico era baixo (5 imóveis "
-            "no total), então a prioridade é baixa."
-        ),
-    },
-    {
         "nome": "Josinildo Imóveis",
         "tipo": "playwright",
         "url_listagem": (
@@ -447,6 +407,30 @@ SITES = [
             "confirmar como sendo a mesma empresa de Olinda. "
             "Falta o domínio correto para mapear."
         ),
+    },
+    {
+        # Uma entrada só cobre Recife E Olinda: a busca aceita várias cidades
+        # em City=<id>,<id>. A cidade de cada imóvel sai do slug da URL
+        # (/alugar/recife/... ou /alugar/olinda/...), então não há "cidade"
+        # fixa aqui -- fixar contaminaria metade dos resultados.
+        #
+        # Substitui as duas entradas antigas (/pt-br/pesquisa/...), que o site
+        # reestruturou: elas ainda carregavam 1,5 MB mas com ZERO anúncio.
+        # TransactionTypeUID=260 é aluguel; MacroPropertyTypeUIDs=2667 é
+        # apartamento. Confirmado ao vivo em 19/08/2026.
+        "nome": "REMAX Recife e Olinda",
+        "tipo": "playwright",
+        "url_listagem": (
+            "https://www.remax.com.br/listings?Country=Brasil&Province=9526"
+            "&City=6576316%2C6582925&CountryId=55"
+            "&CityNM=6576316-Recife%2C6582925-Olinda&ProvinceNM=9526-Pernambuco"
+            "&ListingClass=-1&TransactionTypeUID=260&MacroPropertyTypeUIDs=2667"
+        ),
+        "base_url": "https://www.remax.com.br",
+        "seletor_href": "/pt-br/imoveis/apartamento/",
+        "wait_until": "load",
+        "espera_ms": 5000,
+        "max_paginas": 3,
     },
     {
         "nome": "OLX Imóveis",

@@ -11,6 +11,8 @@ Uso:
 import subprocess
 import sys
 import time
+from datetime import date
+from concurrent.futures import ThreadPoolExecutor
 
 import config
 import db
@@ -23,6 +25,10 @@ import scraper_playwright
 from utils import log
 
 # Mapeia o "tipo" de site (config.py) para o módulo de scraping responsável
+# Fontes coletadas em paralelo. Ver o comentário na etapa 2 de rodar():
+# 3 foi medido contra a memória do runner, não escolhido por gosto.
+WORKERS = 3
+
 SCRAPERS = {
     "html_estatico": scraper_pratica_internet,
     "cards_inline": scraper_cards_inline,
@@ -46,14 +52,23 @@ def rodar():
     log.info("Iniciando monitor de apartamentos")
     log.info(f"Filtros: {config.FILTROS}")
 
+    # Migração única e idempotente: o histórico anterior à Fase 3 existe só
+    # em historico_precos, e as datas de julho não podem ser recoletadas.
+    db.migrar_historico_para_evento()
+
     execucao_id = db.abrir_execucao(_versao_codigo())
     todos_itens = []
     sites_pulados = []
     fontes_confiaveis: set[str] = set()
 
+    # ---------------------------------------------------------------------
+    # 1. TRIAGEM (sequencial) -- decide quem vai ser consultado
+    # ---------------------------------------------------------------------
+    # Fica fora do paralelo de propósito: a checagem de robots.txt grava em
+    # cache no banco, e SQLite com vários escritores dá "database is locked".
+    a_coletar = []
     for site in config.SITES:
-        nome = site["nome"]
-        tipo = site["tipo"]
+        nome, tipo = site["nome"], site["tipo"]
 
         if tipo == "revisar":
             sites_pulados.append(nome)
@@ -74,43 +89,81 @@ def rodar():
 
         modulo = SCRAPERS.get(tipo)
         if not modulo:
-            db.registrar_fonte(execucao_id, nome, db.FALHA, motivo=f"tipo desconhecido: {tipo}")
+            db.registrar_fonte(execucao_id, nome, db.FALHA,
+                               motivo=f"tipo desconhecido: {tipo}")
             log.warning(f"[{nome}] tipo desconhecido: {tipo}")
             continue
 
+        a_coletar.append((site, modulo))
+
+    # ---------------------------------------------------------------------
+    # 2. COLETA (paralela) -- só rede e parsing, nenhuma escrita no banco
+    # ---------------------------------------------------------------------
+    # As fontes são independentes: cada uma abre seu próprio contexto de
+    # navegador. Antes disso a rodada era sequencial e as 7 fontes Playwright
+    # respondiam por ~70% do tempo total.
+    #
+    # WORKERS = 3 foi medido, não escolhido: 3 Chromium simultâneos usaram
+    # 1.667 MB de pico (~556 MB cada), contra os ~7 GB do runner do Actions.
+    # Sobra folga para o Python, o sistema e páginas grandes (o OLX carrega
+    # 1,2 MB). Subir para 4 caberia; 3 mantém margem sem perder quase nada,
+    # porque o tempo passa a ser ditado pela fonte mais lenta.
+    #
+    # Nenhum worker toca o banco. O registro acontece na etapa 3, na thread
+    # principal, porque escrita concorrente em SQLite trava.
+    def coletar(par):
+        site, modulo = par
         inicio = time.monotonic()
         try:
             itens = modulo.scrape(site)
-            duracao = time.monotonic() - inicio
-            # O scraper anexa as contagens em itens.stats quando disponível;
-            # sem isso caímos no que dá para inferir da lista devolvida.
-            stats = getattr(itens, "stats", {})
-            brutos = stats.get("brutos", len(itens))
-            status = db.SEM_ESTOQUE if brutos == 0 else db.OK
-            motivo = stats.get("motivo")
-            if stats.get("bloqueado"):
-                status, motivo = db.BLOQUEADO, motivo or "challenge anti-bot"
-            # guarda de sanidade: volume anômalo sem erro técnico
-            status, motivo_sanidade = db.avaliar_sanidade(nome, brutos, status)
-            motivo = motivo or motivo_sanidade
-
-            db.registrar_fonte(
-                execucao_id, nome, status, motivo=motivo, brutos=brutos,
-                aprovados=len(itens),
-                indeterminados=stats.get("indeterminados", 0),
-                reprovados=stats.get("reprovados", 0),
-                duracao_s=round(duracao, 1), erros=stats.get("erros", 0),
-            )
-            if status in db.STATUS_CONFIAVEIS:
-                fontes_confiaveis.add(nome)
-            elif status == db.PARCIAL:
-                log.warning(f"[{nome}] REBAIXADO para PARCIAL: {motivo}")
-
-            todos_itens.extend(itens)
+            return site, itens, time.monotonic() - inicio, None
         except Exception as e:
-            db.registrar_fonte(execucao_id, nome, db.FALHA, motivo=str(e)[:180],
-                               duracao_s=round(time.monotonic() - inicio, 1), erros=1)
-            log.error(f"[{nome}] erro inesperado: {e}")
+            return site, None, time.monotonic() - inicio, e
+
+    resultados = []
+    if a_coletar:
+        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            for r in executor.map(coletar, a_coletar):
+                resultados.append(r)
+
+    # ---------------------------------------------------------------------
+    # 3. REGISTRO (sequencial) -- avalia e grava
+    # ---------------------------------------------------------------------
+    # Ordena por nome para o log sair estável entre rodadas: com paralelismo
+    # a ordem de chegada varia, e log que muda de ordem é difícil de comparar.
+    for site, itens, duracao, erro in sorted(resultados, key=lambda x: x[0]["nome"]):
+        nome = site["nome"]
+        if erro is not None:
+            db.registrar_fonte(execucao_id, nome, db.FALHA, motivo=str(erro)[:180],
+                               duracao_s=round(duracao, 1), erros=1)
+            log.error(f"[{nome}] erro inesperado: {erro}")
+            continue
+
+        # O scraper anexa as contagens em itens.stats quando disponível;
+        # sem isso caímos no que dá para inferir da lista devolvida.
+        stats = getattr(itens, "stats", {})
+        brutos = stats.get("brutos", len(itens))
+        status = db.SEM_ESTOQUE if brutos == 0 else db.OK
+        motivo = stats.get("motivo")
+        if stats.get("bloqueado"):
+            status, motivo = db.BLOQUEADO, motivo or "challenge anti-bot"
+        # guarda de sanidade: volume anômalo sem erro técnico
+        status, motivo_sanidade = db.avaliar_sanidade(nome, brutos, status)
+        motivo = motivo or motivo_sanidade
+
+        db.registrar_fonte(
+            execucao_id, nome, status, motivo=motivo, brutos=brutos,
+            aprovados=len(itens),
+            indeterminados=stats.get("indeterminados", 0),
+            reprovados=stats.get("reprovados", 0),
+            duracao_s=round(duracao, 1), erros=stats.get("erros", 0),
+        )
+        if status in db.STATUS_CONFIAVEIS:
+            fontes_confiaveis.add(nome)
+        elif status == db.PARCIAL:
+            log.warning(f"[{nome}] REBAIXADO para PARCIAL: {motivo}")
+
+        todos_itens.extend(itens)
 
     log.info(f"Total de imóveis dentro do filtro (todos os sites): {len(todos_itens)}")
     log.info(
@@ -145,6 +198,11 @@ def rodar():
             f"{len(degradadas)} fonte(s) degradada(s): "
             + ", ".join(f"{f['fonte']} ({f['status']})" for f in degradadas)
         )
+
+    # Manutenção no fim: poda todo dia (é barata e só toca o que está
+    # inativo há 180+ dias), VACUUM só no domingo -- ele reescreve o arquivo
+    # inteiro e não vale o custo diário.
+    db.manutencao(vacuum=date.today().weekday() == 6)
 
     log.info(f"Dashboard: {caminho_dashboard}")
     log.info("Concluído.")

@@ -90,7 +90,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
     """Monta o dashboard a partir dos IMÓVEIS consolidados (não anúncios)."""
 
     urls = [u for i in itens for u in (i.get("urls") or [i.get("url", "")])]
-    historico_map = db.obter_historico_todos(urls)
+    historico_map = db.obter_serie_precos(urls)
 
     dados = []
     for i in itens:
