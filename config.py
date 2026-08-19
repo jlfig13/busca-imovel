@@ -25,6 +25,14 @@ FILTROS_POR_CIDADE = {
 }
 FILTRO_PADRAO = FILTROS_POR_CIDADE["Recife"]
 
+# Idade máxima aceita quando a fonte declara a data de atualização.
+# O Portal CRECI carimba "Atualizado em: dd/mm/aaaa" em cada card e boa parte
+# do inventário está parada há meses -- imóvel de aluguel anunciado há muito
+# tempo quase sempre já foi alugado sem ninguém baixar o anúncio.
+# Fonte que não declara data não é afetada: ausência de carimbo não é prova
+# de anúncio velho.
+MAX_DIAS_DESDE_ATUALIZACAO = 30
+
 # ---------------------------------------------------------------------------
 # ARQUIVOS DE SAÍDA
 # ---------------------------------------------------------------------------
@@ -50,7 +58,8 @@ BRIGHTDATA_UNLOCKER_ZONE = os.environ.get("BRIGHTDATA_UNLOCKER_ZONE", "")
 # ---------------------------------------------------------------------------
 # tipo:
 #   "html_estatico" -> listagem vem pronta no HTML (requests + BeautifulSoup)
-#   "portal_classificados" -> OLX / Viva Real / Zap (precisa Bright Data p/ ser confiável)
+#   "playwright" -> listagem via JS e/ou portal grande (Chromium headless)
+#   "cards_inline" -> listagem estática com preço perto do link
 #   "revisar" -> site carrega listagem via JavaScript; ainda não mapeado, ver README
 SITES = [
     {
@@ -87,12 +96,23 @@ SITES = [
     },
     {
         "nome": "Abasol Imóveis",
-        "tipo": "cards_inline",
+        "tipo": "revisar",
         "template": "kenlo",
         "url_listagem": "https://www.abasol.com.br/imoveis/para-alugar/apartamento",
         "base_url": "https://www.abasol.com.br",
         "padrao_link_imovel": "/imovel/",
         "max_paginas": 20,
+        "obs": (
+            "DESATIVADO em 19/08/2026 -- robots.txt PROÍBE. Plataforma Kenlo, "
+            "cujo robots.txt padrão traz allowlist nomeada (Googlebot, bingbot, "
+            "Claude-User etc.) e fecha o resto com 'User-agent: * / Disallow: /'. "
+            "Um scraper próprio cai no '*'. Mesma situação do Harry Fernandes, "
+            "e a mesma decisão: é política do site, não dificuldade técnica. "
+            "Detectado pelo checador automático (robots.py), que passou a rodar "
+            "a cada rodada -- antes ninguém tinha conferido. "
+            "Alternativa: pedir autorização por escrito à imobiliária."
+        ),
+
     },
     {
         "nome": "Belchior Alvarez Corretor",
@@ -117,19 +137,41 @@ SITES = [
     },
     {
         "nome": "Moradasol Imobiliária",
-        "tipo": "cards_inline",
+        "tipo": "revisar",
         "template": "kenlo",
         "url_listagem": "https://www.moradasol.com.br/imoveis/para-alugar/apartamento/recife",
         "base_url": "https://www.moradasol.com.br",
         "padrao_link_imovel": "/imovel/",
+        "obs": (
+            "DESATIVADO em 19/08/2026 -- robots.txt PROÍBE. Plataforma Kenlo, "
+            "cujo robots.txt padrão traz allowlist nomeada (Googlebot, bingbot, "
+            "Claude-User etc.) e fecha o resto com 'User-agent: * / Disallow: /'. "
+            "Um scraper próprio cai no '*'. Mesma situação do Harry Fernandes, "
+            "e a mesma decisão: é política do site, não dificuldade técnica. "
+            "Detectado pelo checador automático (robots.py), que passou a rodar "
+            "a cada rodada -- antes ninguém tinha conferido. "
+            "Alternativa: pedir autorização por escrito à imobiliária."
+        ),
+
     },
     {
         "nome": "Rede Imóveis Pernambuco",
-        "tipo": "cards_inline",
+        "tipo": "revisar",
         "template": "kenlo",
         "url_listagem": "https://www.redeimoveispe.com.br/imoveis/para-alugar/apartamento/recife",
         "base_url": "https://www.redeimoveispe.com.br",
         "padrao_link_imovel": "/imovel/",
+        "obs": (
+            "DESATIVADO em 19/08/2026 -- robots.txt PROÍBE. Plataforma Kenlo, "
+            "cujo robots.txt padrão traz allowlist nomeada (Googlebot, bingbot, "
+            "Claude-User etc.) e fecha o resto com 'User-agent: * / Disallow: /'. "
+            "Um scraper próprio cai no '*'. Mesma situação do Harry Fernandes, "
+            "e a mesma decisão: é política do site, não dificuldade técnica. "
+            "Detectado pelo checador automático (robots.py), que passou a rodar "
+            "a cada rodada -- antes ninguém tinha conferido. "
+            "Alternativa: pedir autorização por escrito à imobiliária."
+        ),
+
     },
     {
         "nome": "Sérgio Rodrigues Corretor",
@@ -146,27 +188,54 @@ SITES = [
         "url_listagem": "https://www.nogueiracorretores.com.br/",
         "base_url": "https://www.nogueiracorretores.com.br",
         "obs": (
-            "O robots.txt deste site proíbe explicitamente acesso automatizado. "
-            "Por respeito à política do site, não construí um scraper para ele."
+            "CORREÇÃO (verificado em 18/08/2026): a nota anterior dizia que o "
+            "robots.txt proíbe acesso automatizado. Isso está errado -- o site "
+            "NÃO tem robots.txt (/robots.txt devolve a própria home). O motivo "
+            "real de não estar mapeado é outro: o domínio não respondeu na "
+            "verificação (HTTP 000) e serve o mesmo HTML de Paulo Miranda "
+            "(mesmo container GTM), indicando SPA com catch-all. "
+            "Falta descobrir a rota real de listagem de locação."
         ),
     },
     {
         "nome": "REMAX Recife",
-        "tipo": "playwright",
+        "tipo": "revisar",
         "url_listagem": "https://www.remax.com.br/pt-br/pesquisa/regiao-nordeste/pernambuco/recife/residencial-apartamento/alugar/",
         "base_url": "https://www.remax.com.br",
         "seletor_href": "/pt-br/imoveis/apartamento/",
         "cidade": "Recife",
         "max_paginas": 3,
+        "obs": (
+            "DESATIVADO em 18/08/2026 -- site reestruturado. A URL acima ainda "
+            "carrega (1,5 MB, HTTP 200, sem bloqueio anti-bot) mas não contém "
+            "mais nenhum anúncio: dos 136 links da página, zero casam com "
+            "'/pt-br/imoveis/apartamento/'. A busca migrou para "
+            "/listings?City=<id>&TransactionTypeUID=<id>. "
+            "É reestruturação de site, não bloqueio. Para reativar: fazer a "
+            "busca no site, copiar a URL /listings?... e descobrir o novo "
+            "padrão de link do anúncio. Volume histórico era baixo (5 imóveis "
+            "no total), então a prioridade é baixa."
+        ),
     },
     {
         "nome": "REMAX Olinda",
-        "tipo": "playwright",
+        "tipo": "revisar",
         "url_listagem": "https://www.remax.com.br/pt-br/pesquisa/regiao-nordeste/pernambuco/olinda/residencial-apartamento/alugar/",
         "base_url": "https://www.remax.com.br",
         "seletor_href": "/pt-br/imoveis/apartamento/",
         "cidade": "Olinda",
         "max_paginas": 3,
+        "obs": (
+            "DESATIVADO em 18/08/2026 -- site reestruturado. A URL acima ainda "
+            "carrega (1,5 MB, HTTP 200, sem bloqueio anti-bot) mas não contém "
+            "mais nenhum anúncio: dos 136 links da página, zero casam com "
+            "'/pt-br/imoveis/apartamento/'. A busca migrou para "
+            "/listings?City=<id>&TransactionTypeUID=<id>. "
+            "É reestruturação de site, não bloqueio. Para reativar: fazer a "
+            "busca no site, copiar a URL /listings?... e descobrir o novo "
+            "padrão de link do anúncio. Volume histórico era baixo (5 imóveis "
+            "no total), então a prioridade é baixa."
+        ),
     },
     {
         "nome": "Josinildo Imóveis",
@@ -202,25 +271,214 @@ SITES = [
         "url_listagem": "https://www.paulomiranda.com.br/",
         "base_url": "https://www.paulomiranda.com.br",
         "obs": (
-            "O robots.txt deste site proíbe explicitamente acesso automatizado. "
-            "Por respeito à política do site, não construí um scraper para ele. "
-            "Sugestão: acompanhar manualmente ou perguntar diretamente ao corretor "
-            "se ele pode te avisar de novidades por WhatsApp."
+            "CORREÇÃO (verificado em 18/08/2026): a nota anterior dizia que o "
+            "robots.txt proíbe acesso automatizado. Isso está errado -- o site "
+            "NÃO tem robots.txt (/robots.txt devolve HTTP 404 com o HTML da home). "
+            "Não há restrição declarada. O bloqueio real é técnico: é uma SPA com "
+            "catch-all -- /alugar, /imoveis?finalidade=locacao e /busca?transacao=alugar "
+            "devolvem os mesmos 41.221 bytes da home, então a listagem só existe "
+            "depois do JS rodar. Precisa de Playwright + a rota real de locação "
+            "(abrir o site, fazer a busca e copiar a URL resultante)."
+        ),
+    },
+    # -----------------------------------------------------------------------
+    # Fontes adicionadas em 18/08/2026 -- todas com robots.txt conferido na
+    # inclusão. As marcadas "revisar" têm o achado concreto registrado no
+    # campo "obs" (não são "não olhei", são "olhei e falta X").
+    # -----------------------------------------------------------------------
+    {
+        # Portal do Conselho Regional de Corretores de Imóveis: só anuncia
+        # quem tem CRECI ativo e está adimplente -- é a fonte com menor risco
+        # de anúncio irregular. robots.txt: "User-agent: * / Disallow:"
+        # (vazio = libera tudo).
+        #
+        # A rota é /Busca/{finalidade}/{tipo}/{cidade}/{uf}/{cidadeId}/{bairroId}/{activeSearchId}/
+        # O último segmento (activeSearchId) é o que realmente seleciona a
+        # cidade -- slug e demais ids são cosméticos (testado: trocar só o
+        # slug para "olinda" continua devolvendo Recife).
+        #
+        # Paginação por ?page=N funciona sem o parâmetro "f=" da URL original
+        # (que é só um JSON base64 com os filtros da busca). Sem "f=" a
+        # listagem vem sem teto de preço -- o filtro local de config.FILTROS
+        # corta o que passar de 2500.
+        #
+        # Validado ao vivo: HTML servido pelo servidor (204 KB), 10 anúncios
+        # por página, preço/quartos/área extraídos corretamente pelo
+        # scraper_cards_inline.
+        "nome": "Portal CRECI Brasil",
+        "tipo": "cards_inline",
+        "url_listagem": (
+            "https://www.portalcreci.org.br/Busca/Alugar/Apartamento/"
+            "recife/17/608/0/13371/"
+        ),
+        "base_url": "https://www.portalcreci.org.br",
+        "padrao_link_imovel": "/Anuncio/Index/",
+        "padrao_paginacao": "?page={n}",
+        "cidade": "Recife",
+        "max_paginas": 10,
+    },
+    {
+        "nome": "Portal CRECI Brasil Olinda",
+        "tipo": "revisar",
+        "url_listagem": "https://www.portalcreci.org.br/",
+        "base_url": "https://www.portalcreci.org.br",
+        "obs": (
+            "Mesma fonte da entrada acima, faltando só a URL de Olinda. O "
+            "activeSearchId (último segmento do path) é o que seleciona a "
+            "cidade e não é derivável de fora: varrer a faixa 13360-13395 "
+            "devolveu Recife em todos os ids, e o endpoint de autocomplete "
+            "que gera esse id não foi localizado. "
+            "COMO RESOLVER (1 minuto): abrir portalcreci.org.br, buscar "
+            "'OLINDA - PE' + Apartamento + Alugar, e copiar a URL do "
+            "resultado para cá com tipo 'cards_inline', "
+            "padrao_link_imovel '/Anuncio/Index/' e padrao_paginacao '?page={n}'."
+        ),
+    },
+    {
+        # Imobiliária de Olinda (Casa Caiada), foco em Olinda e Paulista.
+        # robots.txt: "User-Agent: * / Allow: /".
+        #
+        # padrao_link_imovel usa "-locacao-" em vez de "/imovel/" de
+        # propósito: "/imovel/" também casa com os links de filtro do menu
+        # (/imovel/?finalidade=venda&tipo=casa), que viram cards vazios --
+        # e card vazio hoje PASSA no filtro (ver P-01 da auditoria). O slug
+        # dos anúncios reais é sempre .../imovel/<id>/apartamento-locacao-olinda-pe-<bairro>-<edificio>
+        # Validado ao vivo: preço e área extraídos; o site não expõe quartos
+        # no card da listagem.
+        "nome": "Cristina Mirele Imóveis",
+        "tipo": "cards_inline",
+        "url_listagem": "https://www.cristinamireleimoveis.com.br/imovel/?finalidade=locacao&tipo=apartamento",
+        "base_url": "https://www.cristinamireleimoveis.com.br",
+        "padrao_link_imovel": "-locacao-",
+        "cidade": "Olinda",
+        "max_paginas": 5,
+    },
+    {
+        # Plataforma Kenlo (mesma de Abasol/Moradasol/Rede Imóveis), mas
+        # aqui a listagem é montada por JS -- o HTML cru não traz os links
+        # de imóvel, então precisa de Playwright.
+        #
+        # RESSALVA CONHECIDA: na validação, os 12 cards vieram com preço,
+        # quartos e área IDÊNTICOS (2400 / 1 / 27.01) enquanto os slugs das
+        # URLs mostram valores diferentes (27m, 23m, 30m, 28m). É o bug de
+        # container compartilhado descrito em P-02 da auditoria: a subida na
+        # árvore do DOM ultrapassa o card e pega um bloco com vários
+        # anúncios. Hoje isso é inofensivo porque são todos de 1 quarto e o
+        # filtro de Recife exige 2+, então nada entra na base -- mas os
+        # valores só ficam confiáveis depois da correção da Fase 1.
+        "nome": "Morada Real",
+        "tipo": "revisar",
+        "url_listagem": "https://www.moradareal.com.br/imoveis/para-alugar/apartamento/recife",
+        "base_url": "https://www.moradareal.com.br",
+        "seletor_href": "/imovel/",
+        "cidade": "Recife",
+        "max_paginas": 3,
+        "obs": (
+            "DESATIVADO em 19/08/2026 -- robots.txt PROÍBE. Plataforma Kenlo, "
+            "cujo robots.txt padrão traz allowlist nomeada (Googlebot, bingbot, "
+            "Claude-User etc.) e fecha o resto com 'User-agent: * / Disallow: /'. "
+            "Um scraper próprio cai no '*'. Mesma situação do Harry Fernandes, "
+            "e a mesma decisão: é política do site, não dificuldade técnica. "
+            "Detectado pelo checador automático (robots.py), que passou a rodar "
+            "a cada rodada -- antes ninguém tinha conferido. "
+            "Alternativa: pedir autorização por escrito à imobiliária."
+        ),
+
+    },
+    {
+        "nome": "Imobiliária Harry Fernandes",
+        "tipo": "revisar",
+        "url_listagem": "https://www.harryfernandes.com.br/imoveis/para-alugar/recife",
+        "base_url": "https://www.harryfernandes.com.br",
+        "obs": (
+            "NÃO RASPAR. Este é o único dos sites avaliados que proíbe de "
+            "verdade: o robots.txt tem uma allowlist nomeada (Googlebot, "
+            "bingbot, Claude-User, ChatGPT-User, etc.) e fecha o resto com "
+            "'User-agent: * / Disallow: /'. Um scraper próprio cai no '*'. "
+            "A plataforma é Kenlo (a mesma de Abasol/Moradasol), então "
+            "tecnicamente seria trivial -- é uma decisão de política, não "
+            "de dificuldade. Alternativa: acompanhar manualmente, ou pedir "
+            "à imobiliária autorização por escrito para o monitoramento."
+        ),
+    },
+    {
+        "nome": "Melo Gestão de Imóveis",
+        "tipo": "revisar",
+        "url_listagem": "https://melogestaodeimoveis.com.br/imoveis/para-alugar/apartamento",
+        "base_url": "https://melogestaodeimoveis.com.br",
+        "obs": (
+            "Dois problemas achados na validação. (1) A listagem "
+            "'para-alugar' devolve preços de VENDA (R$ 198.080, R$ 99.000, "
+            "R$ 250.204) -- ou a rota não aplica a finalidade, ou o card "
+            "mistura as duas. (2) Os links de anúncio são slugs na raiz "
+            "(/apartamento-2qts1-vaga54m2), sem prefixo comum: usar 'qt' "
+            "como padrao_link_imovel casa também os links de WhatsApp e "
+            "duplica cada imóvel. "
+            "Obs: a empresa fica em Barra de Jangada, JABOATÃO -- não em "
+            "Olinda. robots.txt libera (inclusive ClaudeBot) mas pede "
+            "Crawl-delay: 5 e proíbe /busca, o que precisa ser respeitado."
+        ),
+    },
+    {
+        "nome": "Imobiliária Eduardo Feitosa",
+        "tipo": "revisar",
+        "url_listagem": "https://eduardofeitosa.com.br/imoveis.php?para=alugar",
+        "base_url": "https://eduardofeitosa.com.br",
+        "obs": (
+            "robots.txt libera (Allow: / -- só bloqueia páginas de "
+            "formulário). Mas a listagem de locação não sai no HTML: "
+            "imoveis.php?para=alugar devolve 200 com 54 KB e ZERO ocorrência "
+            "de 'R$' e nenhum link de imóvel; acrescentar &tipo=N devolve "
+            "HTTP 500. O sitemap.xml tem 211 URLs, nenhuma de locação. "
+            "Coerente com o perfil da empresa (lançamentos e revenda, não "
+            "aluguel). Reavaliar se/quando passarem a anunciar locação. "
+            "Existe também eduardofeitosaprime.com.br, mesmo robots.txt."
+        ),
+    },
+    {
+        "nome": "RM Imobiliária (Olinda)",
+        "tipo": "revisar",
+        "url_listagem": "",
+        "base_url": "",
+        "obs": (
+            "Site não localizado. rmimobiliaria.com.br e "
+            "rmimobiliariaolinda.com.br não respondem; rmimoveis.com.br "
+            "redireciona para rmimoveisprime.com.br, que não foi possível "
+            "confirmar como sendo a mesma empresa de Olinda. "
+            "Falta o domínio correto para mapear."
         ),
     },
     {
         "nome": "OLX Imóveis",
         "tipo": "playwright",
+        # faixa de preço na própria busca: sem ela o OLX devolve de R$ 250
+        # a R$ 10.500 e as 5 páginas se gastam com imóvel fora do orçamento.
+        # Os valores vêm de config.FILTROS -- fonte única de verdade (P-09).
+        # No OLX 'ps' é o piso e 'pe' o teto (confirmado ao vivo: invertidos,
+        # a busca devolve zero resultado).
         "url_listagem": (
             "https://www.olx.com.br/imoveis/aluguel/apartamentos/estado-pe/"
-            "recife-e-regiao/recife"
+            "recife-e-regiao/recife?ps={preco_min}&pe={preco_max}"
         ),
         "base_url": "https://pe.olx.com.br",
         "seletor_href": "/grande-recife/imoveis/",
         "wait_until": "load",
         "max_paginas": 5,
-        # sem "cidade" fixo de propósito: essa busca cobre a região
         "cidade": "Recife",
+        # o OLX renderiza preço/área num segundo passe; com menos de 4 s a
+        # maioria dos cards sai sem preço e vira indeterminado
+        "espera_ms": 4000,
+        "obs": (
+            "REATIVADO em 18/08/2026. O diagnóstico anterior apontava para o "
+            "payload RSC (window.__next_f), mas ele vem vazio no momento da "
+            "leitura -- o caminho certo era o DOM renderizado. Duas causas "
+            "reais, ambas corrigidas: (1) o card usa números NUS "
+            "('42m² / 2 / 1 / 1' = área/quartos/banheiros/vagas), sem a "
+            "palavra 'quarto' que parse_quartos procura -- tratado por "
+            "_RE_OLX_NUMEROS; (2) a subida na árvore parava no primeiro 'R$' "
+            "(nível de 103 chars), enquanto o bairro só aparece no pai "
+            "(SECTION de 185 chars) -- daí todo anúncio vir sem bairro."
+        ),
         # metropolitana inteira (Recife/Olinda/Jaboatão/...), então
         # scraper_playwright._parse_card detecta a cidade por item a
         # partir do padrão "Cidade, Bairro" do próprio card. Isso aqui só
@@ -234,6 +492,10 @@ SITES = [
         "seletor_href": "/propriedades/",
         "padrao_url_pagina": "https://www.imovelweb.com.br/apartamentos-aluguel-recife-pe-pagina-{n}.html",
         "cidade": "Recife",
+        # networkidle (padrão) estoura os 45s: a página mantém requisições
+        # de anúncio abertas indefinidamente. Com "load" carrega em ~6s e
+        # devolve os 30 cards. Medido em 18/08/2026.
+        "wait_until": "load",
         "max_paginas": 5,
     },
     {
@@ -244,6 +506,7 @@ SITES = [
         "seletor_href": "/propriedades/",
         "padrao_url_pagina": "https://www.imovelweb.com.br/apartamentos-aluguel-olinda-pe-pagina-{n}.html",
         "cidade": "Olinda",
+        "wait_until": "load",
         "max_paginas": 5,
     },
     {
@@ -287,3 +550,23 @@ SITES = [
         "cidade": "Olinda",
     },
 ]
+
+
+# ---------------------------------------------------------------------------
+# Resolução de templates nas URLs (P-09 da auditoria)
+# ---------------------------------------------------------------------------
+# Antes, a faixa de preço aparecia hardcoded na URL de alguns portais E em
+# FILTROS. Mudar o orçamento em FILTROS não mudava a busca no portal: ele
+# continuava trazendo a faixa antiga e o filtro local cortava o resto -- você
+# achava que tinha ampliado a busca e não tinha. Agora a URL declara
+# {preco_min}/{preco_max} e o valor vem de FILTROS na carga.
+_PLACEHOLDERS = {
+    "preco_min": FILTROS["preco_min"],
+    "preco_max": FILTROS["preco_max"],
+}
+
+for _site in SITES:
+    for _campo in ("url_listagem", "padrao_url_pagina"):
+        _valor = _site.get(_campo)
+        if _valor and "{preco_" in _valor:
+            _site[_campo] = _valor.format(**_PLACEHOLDERS)

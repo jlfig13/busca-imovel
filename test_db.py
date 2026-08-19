@@ -1,0 +1,252 @@
+# -*- coding: utf-8 -*-
+"""Testes do registro de execução e da guarda de sanidade (P-04 da auditoria).
+
+Usa um banco temporário: config.ARQUIVO_DB é reapontado antes de importar db,
+para não tocar em saida/apartamentos.db (que é o histórico versionado).
+"""
+import os
+import sqlite3
+import tempfile
+
+import pytest
+
+import config
+
+
+@pytest.fixture
+def banco(monkeypatch):
+    fd, caminho = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    monkeypatch.setattr(config, "ARQUIVO_DB", caminho)
+    import db as _db
+    yield _db
+    try:
+        os.unlink(caminho)
+    except OSError:
+        pass
+
+
+def test_execucao_abre_e_encerra(banco):
+    eid = banco.abrir_execucao("abc123")
+    assert eid > 0
+    banco.encerrar_execucao(eid, banco.OK)
+    conn = banco.conectar()
+    row = conn.execute("SELECT status, versao_codigo, encerrada_em FROM execucao WHERE id=?", (eid,)).fetchone()
+    conn.close()
+    assert row[0] == banco.OK
+    assert row[1] == "abc123"
+    assert row[2] is not None
+
+
+def test_registrar_fonte_e_resumo(banco):
+    eid = banco.abrir_execucao()
+    banco.registrar_fonte(eid, "Zap", banco.OK, brutos=30, aprovados=8, indeterminados=2)
+    resumo = banco.resumo_fontes(eid)
+    assert len(resumo) == 1
+    assert resumo[0]["fonte"] == "Zap"
+    assert resumo[0]["brutos"] == 30
+    assert resumo[0]["indeterminados"] == 2
+
+
+def test_sanidade_sem_historico_nao_rebaixa(banco):
+    # primeira vez que a fonte roda: não há com o que comparar
+    status, motivo = banco.avaliar_sanidade("Nova", 5, banco.OK)
+    assert status == banco.OK
+    assert motivo is None
+
+
+def test_sanidade_rebaixa_queda_abrupta(banco):
+    # três rodadas saudáveis com ~30 anúncios...
+    for _ in range(3):
+        eid = banco.abrir_execucao()
+        banco.registrar_fonte(eid, "Zap", banco.OK, brutos=30)
+    # ...e agora a fonte devolve 2 sem erro técnico: layout mudou
+    status, motivo = banco.avaliar_sanidade("Zap", 2, banco.OK)
+    assert status == banco.PARCIAL
+    assert "60%" in motivo
+
+
+def test_sanidade_rebaixa_zero_anuncios(banco):
+    eid = banco.abrir_execucao()
+    banco.registrar_fonte(eid, "Zap", banco.OK, brutos=30)
+    status, motivo = banco.avaliar_sanidade("Zap", 0, banco.OK)
+    assert status == banco.PARCIAL
+    assert "zero" in motivo
+
+
+def test_sanidade_aceita_volume_normal(banco):
+    eid = banco.abrir_execucao()
+    banco.registrar_fonte(eid, "Zap", banco.OK, brutos=30)
+    assert banco.avaliar_sanidade("Zap", 28, banco.OK)[0] == banco.OK
+
+
+def test_sanidade_nao_mexe_em_status_ja_degradado(banco):
+    # BLOQUEADO não vira PARCIAL: o motivo real já é conhecido
+    assert banco.avaliar_sanidade("Zap", 0, banco.BLOQUEADO)[0] == banco.BLOQUEADO
+
+
+def test_fonte_nao_confiavel_preserva_visto_na_ultima_execucao(banco):
+    """O coração do P-04: se o Zap bloquear, seus imóveis não podem ser
+    marcados como ausentes -- do contrário o sistema anuncia que sumiram."""
+    itens = [
+        {"url": "u1", "site": "Zap", "titulo": "a", "bairro": "Boa Viagem",
+         "cidade": "Recife", "preco": 2000, "quartos": 3, "area_m2": 80},
+        {"url": "u2", "site": "OLX", "titulo": "b", "bairro": "Pina",
+         "cidade": "Recife", "preco": 2100, "quartos": 3, "area_m2": 75},
+    ]
+    banco.salvar_execucao(itens, fontes_confiaveis={"Zap", "OLX"})
+
+    # rodada seguinte: só o OLX responde; o Zap falhou e não devolveu nada
+    banco.salvar_execucao(
+        [{"url": "u2", "site": "OLX", "titulo": "b", "bairro": "Pina",
+          "cidade": "Recife", "preco": 2100, "quartos": 3, "area_m2": 75}],
+        fontes_confiaveis={"OLX"},
+    )
+
+    conn = banco.conectar()
+    vistos = dict(conn.execute(
+        "SELECT url, visto_na_ultima_execucao FROM imoveis").fetchall())
+    conn.close()
+    assert vistos["u1"] == 1, "imóvel de fonte que falhou não pode virar 'sumiu'"
+    assert vistos["u2"] == 1
+
+
+def test_fonte_confiavel_marca_ausente_corretamente(banco):
+    itens = [
+        {"url": "u1", "site": "Zap", "titulo": "a", "bairro": "Boa Viagem",
+         "cidade": "Recife", "preco": 2000, "quartos": 3, "area_m2": 80},
+        {"url": "u2", "site": "Zap", "titulo": "b", "bairro": "Pina",
+         "cidade": "Recife", "preco": 2100, "quartos": 3, "area_m2": 75},
+    ]
+    banco.salvar_execucao(itens, fontes_confiaveis={"Zap"})
+    # u1 saiu do ar de verdade, com a fonte respondendo bem
+    banco.salvar_execucao([itens[1]], fontes_confiaveis={"Zap"})
+
+    conn = banco.conectar()
+    vistos = dict(conn.execute(
+        "SELECT url, visto_na_ultima_execucao FROM imoveis").fetchall())
+    conn.close()
+    assert vistos["u1"] == 0, "com a fonte saudável, ausência significa que saiu"
+    assert vistos["u2"] == 1
+
+
+def test_nenhuma_fonte_confiavel_nao_esvazia_o_dashboard(banco):
+    itens = [{"url": "u1", "site": "Zap", "titulo": "a", "bairro": "Boa Viagem",
+              "cidade": "Recife", "preco": 2000, "quartos": 3, "area_m2": 80}]
+    banco.salvar_execucao(itens, fontes_confiaveis={"Zap"})
+    # rodada catastrófica: nenhuma fonte respondeu
+    banco.salvar_execucao([], fontes_confiaveis=set())
+
+    conn = banco.conectar()
+    visto = conn.execute(
+        "SELECT visto_na_ultima_execucao FROM imoveis WHERE url='u1'").fetchone()[0]
+    conn.close()
+    assert visto == 1, "falha geral não pode zerar o dashboard"
+
+
+# ---------------------------------------------------------------------------
+# Fase 3 -- histórico por evento e ciclo de vida
+# ---------------------------------------------------------------------------
+
+def _item(url="u1", site="Zap", preco=2000.0, **kw):
+    base = {"url": url, "site": site, "titulo": "t", "bairro": "Boa Viagem",
+            "cidade": "Recife", "preco": preco, "custo_mensal_total": preco,
+            "quartos": 3, "area_m2": 80}
+    base.update(kw)
+    return base
+
+
+def test_evento_criado_na_primeira_vez(banco):
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    conn = banco.conectar()
+    tipos = [r[0] for r in conn.execute("SELECT tipo FROM evento")]
+    conn.close()
+    assert banco.EV_CRIADO in tipos
+
+
+def test_evento_de_preco_so_quando_muda(banco):
+    banco.salvar_execucao([_item(preco=2000.0)], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([_item(preco=2000.0)], fontes_confiaveis={"Zap"})
+    conn = banco.conectar()
+    n = conn.execute("SELECT COUNT(*) FROM evento WHERE tipo=?",
+                     (banco.EV_PRECO,)).fetchone()[0]
+    conn.close()
+    # preço igual não gera evento -- era esse o desperdício do snapshot diário
+    assert n == 0
+
+
+def test_evento_de_preco_registra_delta(banco):
+    banco.salvar_execucao([_item(preco=2000.0)], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([_item(preco=1800.0)], fontes_confiaveis={"Zap"})
+    conn = banco.conectar()
+    row = conn.execute(
+        "SELECT valor_antes, valor_depois, delta, delta_pct FROM evento WHERE tipo=?",
+        (banco.EV_PRECO,)).fetchone()
+    conn.close()
+    assert float(row[0]) == 2000.0 and float(row[1]) == 1800.0
+    assert row[2] == -200.0
+    assert row[3] == -10.0
+
+
+def test_ausencia_uma_vez_e_suspeito_nao_inativo(banco):
+    """Uma falta não basta: portal grande reordena resultado e às vezes
+    omite um anúncio de uma página."""
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([], fontes_confiaveis={"Zap"})
+    r = banco.aplicar_ciclo_de_vida({"Zap"})
+    assert r["suspeitos"] == 1 and r["inativos"] == 0
+    conn = banco.conectar()
+    st = conn.execute("SELECT status FROM imoveis WHERE url='u1'").fetchone()[0]
+    conn.close()
+    assert st == banco.SUSPEITO
+
+
+def test_duas_ausencias_marcam_inativo_e_geram_evento(banco):
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([], fontes_confiaveis={"Zap"})
+    banco.aplicar_ciclo_de_vida({"Zap"})
+    banco.aplicar_ciclo_de_vida({"Zap"})
+    conn = banco.conectar()
+    st = conn.execute("SELECT status FROM imoveis WHERE url='u1'").fetchone()[0]
+    n = conn.execute("SELECT COUNT(*) FROM evento WHERE tipo=?",
+                     (banco.EV_SUMIU,)).fetchone()[0]
+    conn.close()
+    assert st == banco.INATIVO
+    assert n == 1
+
+
+def test_fonte_nao_confiavel_nao_gera_ciclo_de_vida(banco):
+    """O coração do P-04 aplicado ao ciclo de vida: se o Zap falhou, seus
+    imóveis não podem virar SUSPEITO."""
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([], fontes_confiaveis={"OLX"})
+    r = banco.aplicar_ciclo_de_vida({"OLX"})
+    assert r["suspeitos"] == 0
+    conn = banco.conectar()
+    st = conn.execute("SELECT COALESCE(status,'ATIVO') FROM imoveis WHERE url='u1'").fetchone()[0]
+    conn.close()
+    assert st == banco.ATIVO
+
+
+def test_reaparecimento_gera_evento(banco):
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([], fontes_confiaveis={"Zap"})
+    banco.aplicar_ciclo_de_vida({"Zap"})
+    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
+    conn = banco.conectar()
+    n = conn.execute("SELECT COUNT(*) FROM evento WHERE tipo=?",
+                     (banco.EV_REAPARECEU,)).fetchone()[0]
+    st = conn.execute("SELECT status FROM imoveis WHERE url='u1'").fetchone()[0]
+    conn.close()
+    assert n == 1
+    assert st == banco.ATIVO
+
+
+def test_descricao_alterada_gera_evento(banco):
+    banco.salvar_execucao([_item(descricao="a" * 80)], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([_item(descricao="b" * 80)], fontes_confiaveis={"Zap"})
+    conn = banco.conectar()
+    n = conn.execute("SELECT COUNT(*) FROM evento WHERE tipo=?",
+                     (banco.EV_DESCRICAO,)).fetchone()[0]
+    conn.close()
+    assert n == 1

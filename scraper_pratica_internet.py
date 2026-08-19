@@ -77,28 +77,47 @@ def extrair_detalhes(html: str, url: str) -> dict | None:
 def scrape(site: dict) -> list[dict]:
     """site = uma entrada de config.SITES com tipo 'html_estatico' e
     template 'pratica_internet'."""
-    resultados = []
-    html_listagem = utils.fetch(site["url_listagem"])
+    resultados = utils.ListaComStats()
+    html_listagem, motivo = utils.get_html_diag(site["url_listagem"])
     if not html_listagem:
-        log.error(f"[{site['nome']}] não foi possível buscar a listagem")
+        resultados.stats["motivo"] = motivo
+        resultados.stats["bloqueado"] = motivo == utils.FALHA_BLOQUEIO
+        resultados.stats["erros"] = 1
+        log.error(f"[{site['nome']}] não foi possível buscar a listagem ({motivo})")
         return resultados
 
     links = extrair_links_imoveis(html_listagem, site["base_url"])
+    resultados.stats["brutos"] = len(links)
     log.info(f"[{site['nome']}] {len(links)} imóveis encontrados na listagem")
 
     for link in links:
-        html_detalhe = utils.fetch(link)
+        html_detalhe, motivo_det = utils.get_html_diag(link)
         if not html_detalhe:
+            resultados.stats["erros"] += 1
             continue
         item = extrair_detalhes(html_detalhe, link)
         if not item:
             continue
         item["site"] = site["nome"]
-        item["cidade"] = site.get("cidade", "Recife")
-        if utils.titulo_aceito(item.get("titulo", "")) and utils.passa_no_filtro(
+        item["cidade"] = utils.cidade_do_slug(link) or site.get("cidade", "Recife")
+        if not item.get("bairro"):
+            item["bairro"] = utils.bairro_do_slug(link)
+        if not utils.titulo_aceito(item.get("titulo", "")):
+            resultados.stats["reprovados"] += 1
+            continue
+        veredito, motivos = utils.avaliar_filtro(
             item["preco"], item["quartos"], item["area_m2"], item["cidade"]
-        ):
+        )
+        if veredito == utils.APROVADO:
             resultados.append(item)
+        elif veredito == utils.INDETERMINADO:
+            resultados.stats["indeterminados"] += 1
+            log.debug(f"[{site['nome']}] indeterminado ({', '.join(motivos)}): {link}")
+        else:
+            resultados.stats["reprovados"] += 1
 
-    log.info(f"[{site['nome']}] {len(resultados)} imóveis dentro do filtro")
+    log.info(
+        f"[{site['nome']}] {len(resultados)} imóveis dentro do filtro "
+        f"({resultados.stats['indeterminados']} indeterminados)"
+    )
     return resultados

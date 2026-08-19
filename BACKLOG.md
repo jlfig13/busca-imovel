@@ -1,5 +1,235 @@
 # Backlog de Melhorias — Monitor de Apartamentos
 
+---
+
+## Fase 3 + auditoria + design system (19/08/2026)
+
+### Fase 3 — Histórico e operação diária
+
+- [x] **Tabela `evento`** (P-07) — grava só quando ALGO MUDA, com timestamp.
+  `historico_precos` regravava o mesmo preço todo dia com `INSERT OR IGNORE`
+  e descartava em silêncio uma segunda mudança no mesmo dia: 261 linhas,
+  zero variação observada. Tipos: `CRIADO`, `PRECO_ALTERADO`,
+  `DESCRICAO_ALTERADA`, `ANUNCIANTE_ALTERADO`, `SUMIU`, `REAPARECEU`.
+- [x] **Ciclo de vida com dupla confirmação** — ausência marca `SUSPEITO`;
+  só a segunda falta consecutiva marca `INATIVO` e gera evento `SUMIU`.
+  Uma falta não basta: portal grande reordena resultado e às vezes omite um
+  anúncio de uma página, e declarar "sumiu" na primeira falta geraria alarme
+  falso justamente nos imóveis que interessam.
+- [x] **Ciclo respeita o P-04** — só anúncio de fonte confiável entra no
+  ciclo. Se o Zap falhou, seus imóveis não "sumiram": não foram olhados.
+- [x] **Rodada diária** — cron passou de semanal (`0 12 * * 1`) para diário
+  (`0 10 * * *`). Aluguel gira rápido.
+- [x] **`git pull --rebase` com retry** (P-10) — 3 tentativas com espera
+  progressiva antes do push, e `concurrency` sem `cancel-in-progress` no
+  workflow. O banco é binário: sem isso, uma rodada concorrente fazia o push
+  ser rejeitado e a rodada inteira perdia o histórico **sem falhar
+  visivelmente**, porque o passo anterior já tinha passado.
+
+### Débitos da Fase 1, resolvidos
+
+- [x] **OLX reativado** (P-02) — o diagnóstico anterior apontava para o
+  payload RSC (`window.__next_f`), mas ele vem VAZIO na leitura. O caminho
+  certo era o DOM. Três causas reais, todas medidas:
+  1. Card usa números NUS (`42m² / 2 / 1 / 1`), sem a palavra "quarto" que
+     `parse_quartos` procura → `_RE_OLX_NUMEROS`.
+  2. A subida na árvore parava no primeiro `R$` (103 chars), mas o bairro só
+     aparece no pai (SECTION, 185 chars) → sobe um nível a mais.
+  3. **A lista é virtualizada**: o link existe no DOM desde o início mas o
+     `innerText` fica vazio até o card entrar na viewport, e é descartado de
+     novo quando sai. 44 de 49 anúncios chegavam sem texto → `_coletar_rolando`
+     extrai a cada passo da rolagem, acumulando o melhor texto por href.
+
+  Resultado: **1 → 13 imóveis úteis**, 44 → 1 indeterminado.
+- [x] **Guarda de container compartilhado** — contar `R$` não serve (um card
+  legítimo tem três: aluguel, IPTU, condomínio) e contar `<a>` também não (o
+  card do OLX tem dois links para o mesmo anúncio). O teste certo é **hrefs
+  distintos** dentro do elemento.
+- [x] **Faixa de preço na URL do OLX** (P-09) — templates `{preco_min}` /
+  `{preco_max}` resolvidos a partir de `config.FILTROS` na carga, em vez de
+  hardcode. No OLX `ps` é o piso e `pe` o teto (invertidos, devolve zero).
+- [x] **Mapa bairro → cidade** — anúncio de Casa Caiada ou Rio Doce entrava
+  como Recife (o padrão do site) e era avaliado pelo perfil errado.
+- [x] **Checador de `robots.txt`** (P-17) — `robots.py`, veredito datado e
+  revalidado a cada 30 dias, rodando como guarda em cada rodada.
+  **Achou 4 fontes ativas que PROIBIAM scraping**: Abasol, Moradasol, Rede
+  Imóveis PE e Morada Real — todas Kenlo, com `User-agent: *` →
+  `Disallow: /`. Estavam sendo raspadas sem ninguém ter conferido.
+  Desativadas. Distingue três casos que o config confundia: `SEM_ROBOTS`
+  (404 ou HTML — não é proibição), `PROIBIDO`, `PERMITIDO`.
+- [ ] **REMAX** — segue desativado. Site reestruturado; a rota é
+  `/listings?City=<id>&TransactionTypeUID=<id>` e os IDs internos não são
+  deriváveis de fora. Mesma resolução de 1 minuto do CRECI Olinda: buscar no
+  site e copiar a URL.
+
+### Design system "Atlântico"
+
+- [x] **`design.py`** — tokens e CSS com o racional de cada decisão.
+  Fundo branco + modo noturno em três estados (escolha explícita, `data-tema`,
+  e o padrão "sistema" via `prefers-color-scheme`).
+  Cores do lugar: **Azul-Atlântico #10495B** (mar de Boa Viagem, Capibaribe)
+  como institucional e **Ocre-Olinda #C2703D** (fachadas do Sítio Histórico)
+  como acento único. As cores do frevo ficariam saturadas e brincalhonas — o
+  oposto de "dados confiáveis".
+- [x] **Card expansível de ofertas** — imóvel multi-fonte abre a lista de
+  anúncios do mais barato ao mais caro, com a fonte de cada um. Resolve duas
+  coisas: mostra por onde fechar mais barato E deixa conferir a olho se o
+  agrupamento faz sentido (calibração pela interface, em vez de limiar cego).
+- [x] **Preço de vitrine é o MENOR** entre as fontes — é o que se paga de
+  fato. A mediana consolidada mostraria valor indisponível em portal nenhum.
+
+### Auditoria independente — corrigido
+
+- [x] **Colisão de classe CSS** — o span `.rua.vazio` herdava
+  `.vazio{padding:64px}` do estado-vazio da lista: 128px de padding fantasma
+  por imóvel. Renomeado para `.rua-ausente` / `.estado-vazio`.
+- [x] **Scroll horizontal** — topo com margem negativa fora do container +
+  tabela de saúde sem rolagem própria.
+- [x] **Item de 291px** — grid com `row-span` esticava a linha até a altura da
+  coluna de preço. Trocado por flex: ~120px.
+- [x] **Índices** em `imoveis(visto_na_ultima_execucao)`, `imoveis(imovel_id)`,
+  `imoveis(site)` e `execucao_fonte(fonte)`. Criados APÓS o `ALTER TABLE` --
+  indexar coluna antes de ela existir derrubava a conexão em banco antigo.
+- [x] **Código morto** — `scraper_portais.py` (substituído por
+  `extracao_jsonld.py`), `db.listar_vistos_na_ultima_execucao` e
+  `db.contar_execucoes_anteriores`.
+
+### Auditoria — recomendado, não aplicado
+
+- [ ] **Paralelizar fontes Playwright** — 6 fontes = 237s dos 349s (68%).
+  Pool de 3 workers levaria a rodada de ~6 min para ~2. Não apliquei porque
+  muda a estrutura do scraper e o consumo de memória do Chromium no runner,
+  e não consigo validar as duas coisas com confiança agora. **Maior retorno
+  disponível.**
+- [ ] **Aposentar `historico_precos`** — duplica `evento`. O dashboard ainda
+  lê a tabela antiga para a faixa de preço.
+- [ ] **Medir rendimento por fonte** — Imovelweb 30→0, CRECI 100→2,
+  Newville 20→0, Rogério 16→0: 68s por rodada para 2 imóveis. Hipóteses
+  diferentes (CRECI não filtra preço na busca; Imovelweb pode não ter
+  estoque). Medir antes de cortar — cortar por rendimento pode cortar
+  justamente a fonte da oportunidade.
+- [ ] **`VACUUM` + poda de inativos** — banco foi de 163 KB para 668 KB.
+- [ ] **Filtros na URL** e **favoritos/descartados**.
+
+Testes: **111 → 121**. Rodada: 18 fontes ativas, 72 anúncios, 50 imóveis.
+
+---
+
+
+---
+
+## Fase 1 — Confiabilidade da coleta (18/08/2026)
+
+Executada a partir da auditoria. Estado real, item a item:
+
+- [x] **Veredito de filtro em três estados** (P-01) — `utils.avaliar_filtro`
+  devolve `APROVADO` / `INDETERMINADO` / `REPROVADO` com motivos. Antes,
+  `passa_no_filtro(None, None, None, None)` devolvia `True` e foi assim que
+  56 dos 57 registros do OLX entraram sem nenhum dado. `passa_no_filtro`
+  segue existindo como invólucro compatível.
+- [x] **Registro de execução** (P-04) — tabelas `execucao` e `execucao_fonte`
+  com status, motivo, contagens e duração por fonte.
+- [x] **Guarda de sanidade por volume** (P-04) — `db.avaliar_sanidade`
+  rebaixa para `PARCIAL` quando o volume cai abaixo de 60% da mediana das
+  últimas 5 rodadas, mesmo sem erro técnico.
+- [x] **Ausência só conta com fonte saudável** (P-04) — `salvar_execucao`
+  recebe `fontes_confiaveis` e só zera `visto_na_ultima_execucao` delas.
+  Validado com o banco real: com o Viva Real fora, seus 8 imóveis foram
+  preservados em vez de virarem "sumiram".
+- [x] **Retry com backoff e classificação de falha** (P-11) —
+  `utils.get_html_diag` distingue timeout, 4xx, 5xx, conexão e challenge
+  anti-bot; backoff exponencial com jitter no lugar do sleep fixo.
+- [x] **Detecção de bloqueio** (P-11) — `utils.detectar_bloqueio` reconhece
+  Cloudflare/DataDome/reCAPTCHA. Página de desafio devolve HTTP 200 e zero
+  cards: sem isso, bloqueio era lido como "a fonte esvaziou".
+- [x] **Painel de saúde das fontes** (backlog 4.1) — tabela no rodapé do
+  dashboard, aberta automaticamente quando há fonte degradada.
+- [x] **Bairro derivado do slug da URL** (P-18) — `utils.bairro_do_slug`
+  validado contra `BAIRROS_CANONICOS` (~70 bairros de Recife/Olinda/Jaboatão).
+  Medido: sem bairro caiu de **45,4% para 13%**; sem preço, de 31,9% para 0%.
+- [x] **Extração JSON-LD** (P-02) — `extracao_jsonld.py` lê schema.org das
+  páginas de listagem e **enriquece** (não substitui: medido, o JSON-LD dos
+  portais não traz preço). Cobertura no Viva Real e Zap: quartos, área e
+  banheiros 100%, logradouro 90%, fotos 100%. Numa rodada real completou
+  132 campos em 29 imóveis. O `logradouro` é inédito na base e é o sinal
+  mais forte da deduplicação da Fase 2.
+- [x] **Correção das notas de robots.txt** (P-17) — Nogueira e Paulo Miranda
+  não têm robots.txt; a proibição registrada não existia. Harry Fernandes
+  proíbe de fato (`User-agent: *` → `Disallow: /`) e ficou de fora.
+
+**Pendente da Fase 1:**
+
+- [ ] **OLX via `window.__next_f`** (P-02) — o OLX migrou para Next.js App
+  Router e não expõe `__NEXT_DATA__` nem `__APOLLO_STATE__`; os anúncios vêm
+  no payload RSC em streaming (`window.__next_f`). O JSON-LD da página só
+  traz `WebSite`, `Organization` e um `Product` avulso. É a peça que falta
+  para recuperar a maior fonte.
+- [ ] **Persistir os campos novos** — `logradouro`, `banheiros`, `andar` e
+  `fotos` já são extraídos mas ainda não têm coluna: hoje melhoram o filtro
+  (resgatam item que ficaria indeterminado) e são descartados na gravação.
+  Entram com o schema da Fase 2.
+- [ ] **Checador de robots.txt por fonte**, com veredito datado e revalidação
+  periódica — política de acesso muda e nada percebe hoje.
+
+Testes: **42 → 77**, todos passando.
+
+---
+
+## Fase 1b — Qualidade de dados e poda de fontes (18/08/2026)
+
+- [x] **Endereço extraído do texto do card** — `utils.endereco_do_texto`
+  cobre os dois formatos que faltavam: Imovelweb (`Av. X\nBairro, Cidade`)
+  e Moradasol (`Bairro - Cidade - PE`, colado ao texto anterior). Mais
+  `utils.bairro_no_inicio` como último recurso, para sites que abrem o
+  título com o bairro (Camila Melo). **Nenhum levantamento manual foi
+  necessário: o endereço já estava nos cards, só não era lido.**
+  Todos validados contra `BAIRROS_CANONICOS`; menção de proximidade
+  ("a 10 minutos de Boa Viagem") é rejeitada de propósito, porque atribuir
+  bairro errado é pior que não ter bairro.
+- [x] **Filtro de anúncio desatualizado** — `MAX_DIAS_DESDE_ATUALIZACAO = 30`.
+  O Portal CRECI carimba "Atualizado em: dd/mm/aaaa" em cada card; medido
+  numa rodada real, **11 de 40 anúncios estavam fora do prazo**. Fonte que
+  não declara data não é afetada: ausência de carimbo não é prova de
+  anúncio velho.
+- [x] **Colunas novas** — `logradouro`, `banheiros`, `andar` e `idade_dias`
+  na tabela `imoveis`, por migração incremental. O `UPDATE` usa `COALESCE`
+  para uma rodada sem o dado não apagar o que já foi capturado.
+- [x] **"Não Localizado" na saída** — Excel e dashboard marcam a lacuna
+  explicitamente. No banco o ausente continua `NULL`: é `NULL` que permite
+  medir completude e alimentar a fila de enriquecimento.
+- [x] **Imovelweb: `wait_until` de `networkidle` para `load`** — a página
+  mantém requisições abertas indefinidamente e estourava os 45 s. Com
+  `load` carrega em ~6 s e devolve os 30 cards.
+
+**Auditoria de bloqueio (as 24 fontes, uma a uma):** **zero bloqueadas.**
+Nenhum Cloudflare, DataDome ou reCAPTCHA em nenhuma. Todas responderam
+HTTP 200. Não havia o que remover por bloqueio — os problemas eram outros:
+
+- [x] **REMAX Recife e Olinda → `revisar`** — site reestruturado. A URL
+  ainda carrega 1,5 MB mas dos 136 links da página **zero** são anúncios;
+  a busca migrou para `/listings?City=<id>&TransactionTypeUID=<id>`.
+- [x] **OLX → `revisar`** — extração incompatível, não bloqueio. Migrou para
+  Next.js App Router e serve os anúncios no payload RSC (`window.__next_f`).
+  Era a fonte mais lenta (27,8 s/página) e a que mais injetava lixo.
+
+**Resultado medido em rodada completa (69 imóveis ativos, 21 fontes):**
+
+| Campo | Antes | Depois |
+|---|---|---|
+| bairro | 54,6% | **100%** |
+| preço | 68,1% | **100%** |
+| logradouro | 0% | **68,1%** |
+| banheiros | 0% | **72,5%** |
+| andar | 0% | **20,3%** |
+
+A guarda de sanidade disparou sozinha na rodada real: o Zap veio com 29
+anúncios contra mediana histórica de 57, foi rebaixado para `PARCIAL` e,
+por isso, seus imóveis **não** foram marcados como desaparecidos.
+
+Testes: **77 → 91**.
+
+---
+
 Documento vivo. Cada item tem **prioridade** (P0 = necessário para o novo
 modelo de operação, P1 = alto valor, P2 = incremental), um **porquê** e uma
 **definição de pronto** enxuta.
@@ -9,6 +239,70 @@ modelo de operação, P1 = alto valor, P2 = incremental), um **porquê** e uma
 - **Sem e-mail.** O produto é a consulta online (dashboard publicado).
 - Roda **1× por semana**, de forma automática.
 - Foco contínuo em **refino de busca/filtros** e **UX**.
+
+---
+
+## Fase 2 — Normalização e deduplicação (18/08/2026)
+
+O conceito de **imóvel** passou a existir. `imoveis` continua modelando
+ANÚNCIO (uma publicação, chaveada por URL); a tabela `imovel` representa a
+unidade física, ligada por `imovel_anuncio` — que guarda o score e a
+classificação, para a decisão poder ser conferida e desfeita.
+
+- [x] **`resolucao.py`** — blocking, comparadores, vetos e clusterização.
+  - **Blocking** com 6 chaves em união (geo, endereço, bairro+forma,
+    condomínio, foto, contato). A chave de forma emite a faixa de área **e
+    as vizinhas**: sem isso, Viva Real dizendo 72 m² e Zap dizendo 75 m²
+    cairiam em faixas diferentes e o par nunca seria comparado. Só esse
+    ajuste dobrou os pares examinados (48 → 94).
+  - **9 comparadores** ponderados, cada um devolvendo 0..1 ou `None`. A
+    média é calculada só sobre quem pôde opinar.
+  - **Vetos**: cidades diferentes, 2+ quartos de diferença, área divergindo
+    mais de 25%, e **mesma fonte** — portal sério não duplica o próprio
+    anúncio, então dois anúncios do mesmo site quase sempre são unidades
+    distintas do mesmo prédio.
+  - **Trava de evidência**: com menos de 3 comparadores ativos o teto é
+    `PROVAVELMENTE_MESMO`. Dois sinais fracos coincidindo não é o mesmo que
+    três independentes concordando.
+  - **Trava de transitividade**: um cluster só se forma se TODOS os pares
+    internos alcançam o limiar. Sem ela, A~B e B~C arrastariam A e C para o
+    mesmo imóvel mesmo sendo claramente diferentes.
+- [x] **Consolidação com registro de conflito** — valor vencedor por maioria,
+  depois mediana (numérico) ou fonte mais confiável. Divergência **nunca é
+  resolvida em silêncio**: vai para a tabela `conflito` e aparece no card.
+- [x] **Custo decomposto** (P-08) — `utils.decompor_custo` separa aluguel,
+  condomínio e IPTU, com flag `custo_completo`. Sem o condomínio o total é
+  um piso, não o custo real.
+- [x] **Título gerado** (P-06) — `utils.gerar_titulo` produz
+  `Apartamento · 3 quartos · 78 m² · Boa Viagem` a partir dos campos
+  normalizados. O texto raspado (que trazia `+6 fotos`, `IMÓVEIS` e string
+  vazia) vira `titulo_origem`, guardado para auditoria e para o matching de
+  descrição.
+- [x] **Dashboard e Excel por imóvel** — um apartamento, um card, N selos de
+  fonte. Card ganhou R$/m², dias no mercado, aviso de custo parcial e marca
+  de divergência. O histórico de preço é a união das séries dos anúncios do
+  mesmo imóvel, então a queda aparece assim que **qualquer** fonte baixa.
+
+**Resultado medido:** 69 anúncios → **47 imóveis**, 21 deles com 2+ fontes.
+**Redução de 32%** na lista. Exemplo real agrupado corretamente:
+`2 quartos · 85 m² · Boa Viagem` anunciado simultaneamente no Zap, no Viva
+Real e na Rede Imóveis Pernambuco — antes eram três linhas para avaliar.
+
+Histórico preservado na migração: `primeiro_visto` mais antigo continua
+2026-07-22 e os 272 pontos de preço estão intactos.
+
+Testes: **91 → 111**.
+
+**Pendente da Fase 2:**
+
+- [ ] **Gabarito rotulado à mão** para calibrar os limiares. Os cortes atuais
+  (0,88 / 0,72 / 0,55) são um ponto de partida defensável, não medido.
+  Rotular os grupos da base e ajustar para precisão ≥ 0,97 na faixa
+  `MESMO_IMOVEL` — agrupar errado é o erro caro.
+- [ ] **Revisão humana** dos matches na faixa 0,72–0,88, com um clique para
+  desfazer no dashboard.
+- [ ] **Geocoding**: o comparador `geo` tem peso 0,20 (o maior) e hoje nunca
+  opina, porque nenhuma fonte entrega coordenada.
 
 ---
 

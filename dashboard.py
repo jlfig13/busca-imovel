@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Gera um único arquivo HTML autocontido (dashboard.html) com todos os
-dados embutidos como JSON. Abre com duplo clique, sem precisar de
-servidor, internet (exceto pelas 3 fontes do Google Fonts, que caem
-para uma fonte padrão do sistema se estiver offline) ou instalação.
+Gera um único arquivo HTML autocontido (dashboard.html), com os dados
+embutidos como JSON. Abre com duplo clique -- sem servidor, sem internet,
+sem instalação. É essa restrição que permite publicá-lo no GitHub Pages
+como artefato estático.
 
-Conceito visual: "Diário de Busca" -- um livro de registros de imóveis,
-onde cada anúncio novo do dia ganha um carimbo, como um carimbo de data
-num protocolo. Paleta de papel e tinta, tipografia serifada no título e
-monoespaçada nos dados (preço, m², contadores).
+O sistema visual está em design.py, com o racional de cada decisão.
 """
 import html
 import json
@@ -16,288 +13,141 @@ from datetime import date
 
 import config
 import db
-from utils import log
-
-ICONES_SVG = {
-    "quarto": '''<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 15.5V6.5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1v9"/><path d="M2.5 12h15"/><path d="M4.5 9.5h4a1 1 0 0 1 1 1V12h-5V9.5Z"/><path d="M2.5 15.5v1.7M17.5 15.5v1.7"/></svg>''',
-    "bairro": '''<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 18s6-5.2 6-9.8A6 6 0 0 0 4 8.2C4 12.8 10 18 10 18Z"/><circle cx="10" cy="8" r="2.1"/></svg>''',
-    "valor": '''<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5 17.5 8.5v6a1 1 0 0 1-1 1h-6a1 1 0 0 1-.7-.3l-7-7a1 1 0 0 1 0-1.4l4.6-4.6a1 1 0 0 1 1.4 0Z"/><circle cx="12.2" cy="7.8" r="1.1"/></svg>''',
-    "busca": '''<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.7" cy="8.7" r="5.7"/><path d="m17 17-4.3-4.3"/></svg>''',
-    "externo": '''<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-3"/><path d="M12 3h5v5"/><path d="M17 3 9 11"/></svg>''',
-    "area": '''<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h5M3 3v5M17 3h-5M17 3v5M3 17h5M3 17v-5M17 17h-5M17 17v-5"/></svg>''',
-    "limpar": '''<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l10 10M15 5 5 15"/></svg>''',
-    "vazio": '''<svg width="32" height="32" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4;display:block;margin:0 auto 10px"><circle cx="8.7" cy="8.7" r="5.7"/><path d="m17 17-4.3-4.3"/></svg>''',
-}
+import design
+from utils import log, NAO_LOCALIZADO
 
 
-CSS = """
-:root{
-  --papel: #E8E4D8;
-  --papel-alto: #F1EEE4;
-  --tinta: #1E241B;
-  --tinta-suave: #5B6154;
-  --linha: #C9C4B2;
-  --carimbo: #205C4F;
-  --carimbo-fundo: #E2ECE8;
-  --foco: #2B4A6F;
-}
-*{box-sizing:border-box;}
-html,body{margin:0;padding:0;}
-body{
-  background:var(--papel);
-  color:var(--tinta);
-  font-family:'IBM Plex Sans', -apple-system, Segoe UI, Arial, sans-serif;
-  font-size:15px;
-  line-height:1.45;
-}
-.icone{width:17px;height:17px;display:inline-block;vertical-align:-3px;flex-shrink:0;}
-a{color:inherit;}
-
-.pagina{max-width:900px;margin:0 auto;padding:0 20px 64px;}
-
-.mastro{
-  padding:40px 0 22px;
-  border-bottom:2px solid var(--tinta);
-}
-.mastro-topo{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;}
-.mastro h1{
-  font-family:'Fraunces', Georgia, serif;
-  font-weight:600;
-  font-size:34px;
-  letter-spacing:-0.01em;
-  margin:0;
-}
-.mastro .data{
-  font-family:'IBM Plex Mono', monospace;
-  font-size:13px;
-  color:var(--tinta-suave);
-  letter-spacing:0.03em;
-}
-.mastro .subtitulo{
-  margin-top:6px;
-  color:var(--tinta-suave);
-  font-size:14.5px;
-}
-
-.barra-filtros{
-  margin-top:26px;
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  align-items:stretch;
-}
-.campo{
-  display:flex;
-  align-items:center;
-  gap:7px;
-  background:var(--papel-alto);
-  border:1px solid var(--linha);
-  border-radius:3px;
-  padding:0 10px;
-  height:40px;
-  color:var(--tinta-suave);
-}
-.campo:focus-within{border-color:var(--foco);color:var(--tinta);}
-.campo select,.campo input{
-  border:0;background:transparent;color:var(--tinta);
-  font-family:'IBM Plex Sans', sans-serif; font-size:14px;
-  height:38px; outline:none; min-width:0;
-}
-.campo select{cursor:pointer;}
-#f-busca{width:170px;}
-.campo.valor{width:170px;}
-.campo.valor input{width:68px; font-family:'IBM Plex Mono',monospace;}
-.til{color:var(--tinta-suave);}
-.campo select.largo{min-width:140px;}
-
-.btn{
-  height:40px;
-  padding:0 18px;
-  border:1px solid var(--tinta);
-  background:var(--tinta);
-  color:var(--papel-alto);
-  border-radius:3px;
-  font-family:'IBM Plex Sans', sans-serif;
-  font-size:14px;
-  font-weight:600;
-  letter-spacing:0.01em;
-  cursor:pointer;
-  display:flex; align-items:center; gap:8px;
-}
-.btn:hover{background:#333c2c;}
-.btn.fantasma{
-  background:transparent; color:var(--tinta-suave); border-color:var(--linha);
-  font-weight:400;
-}
-.btn.fantasma:hover{color:var(--tinta); border-color:var(--tinta-suave);}
-.btn:focus-visible,.campo:focus-within,select:focus-visible,input:focus-visible{
-  outline:2px solid var(--foco); outline-offset:2px;
-}
-
-.resumo{
-  margin-top:20px;
-  padding:9px 2px;
-  font-family:'IBM Plex Mono', monospace;
-  font-size:12.5px;
-  color:var(--tinta-suave);
-  letter-spacing:0.02em;
-  border-bottom:1px solid var(--linha);
-}
-
-.lista{margin-top:4px;}
-.linha{
-  display:flex;
-  gap:16px;
-  align-items:center;
-  padding:16px 2px;
-  border-bottom:1px solid var(--linha);
-  position:relative;
-}
-.linha:hover{background:var(--papel-alto);}
-.linha-principal{flex:1; min-width:0;}
-.linha-titulo{
-  font-family:'Fraunces', Georgia, serif;
-  font-size:18px;
-  font-weight:500;
-  margin:0 0 3px;
-  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-  min-width:0;
-}
-.linha-titulo-texto{
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1;
-}
-.linha-meta{
-  display:flex; flex-wrap:wrap; gap:14px;
-  color:var(--tinta-suave); font-size:13.5px;
-}
-.linha-meta span{display:flex; align-items:center; gap:5px;}
-.linha-site{
-  font-family:'IBM Plex Mono', monospace;
-  font-size:11.5px;
-  text-transform:uppercase;
-  letter-spacing:0.06em;
-  color:var(--tinta-suave);
-}
-.linha-preco{
-  font-family:'IBM Plex Mono', monospace;
-  font-size:19px;
-  font-weight:600;
-  white-space:nowrap;
-  text-align:right;
-}
-.linha-preco small{display:block; font-size:11px; font-weight:400; color:var(--tinta-suave); text-align:right;}
-
-.abrir{
-  display:flex; align-items:center; gap:6px;
-  font-family:'IBM Plex Mono', monospace;
-  font-size:12px; text-transform:uppercase; letter-spacing:0.04em;
-  color:var(--tinta-suave);
-  text-decoration:none;
-  border:1px solid var(--linha);
-  border-radius:3px;
-  padding:7px 10px;
-  white-space:nowrap;
-}
-.abrir:hover{border-color:var(--tinta); color:var(--tinta);}
-
-.carimbo{
-  font-family:'IBM Plex Mono', monospace;
-  font-size:11px;
-  font-weight:700;
-  letter-spacing:0.09em;
-  color:var(--carimbo);
-  border:1.5px solid var(--carimbo);
-  background:var(--carimbo-fundo);
-  border-radius:2px;
-  padding:2px 7px;
-  transform:rotate(-4deg);
-  display:inline-block;
-}
-.queda{
-  font-family:'IBM Plex Mono', monospace;
-  font-size:11px; font-weight:700; letter-spacing:0.06em;
-  color:#205C4F; background:#d4edda; border:1.5px solid #205C4F;
-  border-radius:2px; padding:2px 7px; display:inline-block;
-}
-.sparkline{display:inline-block;vertical-align:middle;margin-left:6px;}
-
-.vazio{
-  padding:60px 10px; text-align:center; color:var(--tinta-suave);
-}
-.vazio .icone{width:30px;height:30px;opacity:0.5;margin-bottom:10px;}
-
-.rodape{
-  margin-top:30px; padding-top:16px; border-top:1px solid var(--linha);
-  color:var(--tinta-suave); font-size:12.5px;
-  font-family:'IBM Plex Mono', monospace;
-}
-
-@media (max-width:640px){
-  .mastro h1{font-size:26px;}
-  .linha{flex-wrap:wrap;}
-  .linha-preco{text-align:left; margin-left:auto;}
-  #f-busca{width:120px;}
-}
-
-@media (prefers-reduced-motion: no-preference){
-  .linha{transition:background 0.12s ease;}
-  .btn{transition:background 0.12s ease;}
-}
-"""
+def _fmt_preco(v):
+    if v is None:
+        return NAO_LOCALIZADO
+    return f"R$ {v:,.0f}".replace(",", ".")
 
 
-def _formatar_preco(preco):
-    if preco is None:
-        return "—"
-    return f"R$ {preco:,.0f}".replace(",", ".")
+def _historico_unificado(historico_map: dict, urls: list) -> list:
+    """Une as séries de preço dos anúncios de um mesmo imóvel.
+
+    Quando dois portais anunciam o mesmo apartamento, cada um tem sua série.
+    Mesclar por data ficando com o menor valor do dia evita que o gráfico
+    serrilhe entre portais que cobram valores levemente diferentes, e faz a
+    queda aparecer assim que QUALQUER fonte baixa o preço."""
+    por_data: dict[str, float] = {}
+    for url in urls:
+        for data, preco in historico_map.get(url, []):
+            if preco is None:
+                continue
+            if data not in por_data or preco < por_data[data]:
+                por_data[data] = preco
+    return [[d, por_data[d]] for d in sorted(por_data)][-30:]
 
 
-def gerar_dashboard(itens: list[dict]) -> str:
-    """Gera o arquivo em config.ARQUIVO_DASHBOARD a partir dos itens
-    (já devem vir com 'novo' e 'primeiro_visto' preenchidos por db.py)."""
+_CLASSE_STATUS = {
+    "OK": "st-ok", "SEM_ESTOQUE": "st-neutro", "PULADO": "st-neutro",
+    "PARCIAL": "st-alerta", "BLOQUEADO": "st-erro", "FALHA": "st-erro",
+}
 
-    urls = [i.get("url", "") for i in itens]
+
+def _painel_saude(saude: list[dict] | None) -> str:
+    """Saúde por fonte, recolhida por padrão e aberta quando há problema.
+
+    Existe porque fonte que quebra em silêncio é indistinguível de fonte sem
+    estoque (P-04): antes disso só o log contava a diferença, e ninguém lê
+    log de rodada que "funcionou"."""
+    if not saude:
+        return ""
+
+    degradadas = [f for f in saude if f["status"] in ("FALHA", "BLOQUEADO", "PARCIAL")]
+    ok = len([f for f in saude if f["status"] == "OK"])
+    resumo = (f"{len(degradadas)} fonte(s) exigindo atenção"
+              if degradadas else f"{ok} fontes saudáveis")
+
+    linhas = []
+    for f in saude:
+        if f["status"] == "PULADO":
+            continue  # não mapeada de propósito; não é sintoma de quebra
+        linhas.append(
+            f"<tr><td>{html.escape(f['fonte'])}</td>"
+            f"<td><span class='st {_CLASSE_STATUS.get(f['status'], 'st-neutro')}'>"
+            f"{f['status']}</span></td>"
+            f"<td class='n'>{f['brutos'] or 0}</td>"
+            f"<td class='n'>{f['aprovados'] or 0}</td>"
+            f"<td class='n'>{f['indeterminados'] or 0}</td>"
+            f"<td class='n'>{f['duracao_s'] or 0:.0f}s</td>"
+            f"<td>{html.escape(f['motivo'] or '')}</td></tr>"
+        )
+
+    return f"""<details class="saude"{' open' if degradadas else ''}>
+    <summary><span class="ponto{' alerta' if degradadas else ''}"></span>Saúde das fontes — {resumo}</summary>
+    <div class="saude-rolagem"><table>
+      <thead><tr><th>Fonte</th><th>Status</th><th class="n">Coletados</th>
+        <th class="n">No filtro</th><th class="n">Incompletos</th>
+        <th class="n">Tempo</th><th>Observação</th></tr></thead>
+      <tbody>{''.join(linhas)}</tbody>
+    </table></div>
+  </details>"""
+
+
+def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None) -> str:
+    """Monta o dashboard a partir dos IMÓVEIS consolidados (não anúncios)."""
+
+    urls = [u for i in itens for u in (i.get("urls") or [i.get("url", "")])]
     historico_map = db.obter_historico_todos(urls)
 
-    dados_js = []
+    dados = []
     for i in itens:
-        url = i.get("url", "#")
-        hist = historico_map.get(url, [])
-        preco_atual = i.get("preco")
+        anuncios = i.get("anuncios") or []
+        urls_item = ([a["url"] for a in anuncios] if anuncios
+                     else (i.get("urls") or [i.get("url", "#")]))
+        hist = _historico_unificado(historico_map, urls_item)
+        # Preço de vitrine é o MENOR entre as fontes: é o que você de fato
+        # pagaria. A mediana consolidada mostraria um valor que não está
+        # disponível em portal nenhum.
+        preco = i.get("preco_min") or i.get("custo_mensal_total") or i.get("preco")
 
-        queda_preco = False
-        queda_valor = None
-        if len(hist) >= 2 and preco_atual is not None:
-            preco_anterior = next((h[1] for h in reversed(hist[:-1]) if h[1] is not None), None)
-            if preco_anterior and preco_anterior > preco_atual:
-                queda_preco = True
-                queda_valor = round(preco_anterior - preco_atual, 2)
+        queda = None
+        if len(hist) >= 2 and preco is not None:
+            anterior = next((h[1] for h in reversed(hist[:-1]) if h[1] is not None), None)
+            if anterior and anterior > preco:
+                queda = round(anterior - preco, 2)
 
-        dados_js.append({
+        dados.append({
             "titulo": i.get("titulo") or "Apartamento",
-            "site": i.get("site", ""),
             "cidade": i.get("cidade") or "",
             "bairro": i.get("bairro") or "",
-            "preco": preco_atual,
-            "precoFmt": _formatar_preco(preco_atual),
+            "logradouro": i.get("logradouro") or "",
+            "preco": preco,
+            "precoFmt": _fmt_preco(preco),
             "quartos": i.get("quartos"),
             "area": i.get("area_m2"),
-            "url": url,
+            "banheiros": i.get("banheiros"),
+            "vagas": i.get("vagas"),
+            "andar": i.get("andar"),
+            "precoM2": i.get("preco_m2"),
+            "diasAnunciado": i.get("dias_anunciado") or 0,
+            "custoCompleto": bool(i.get("custo_completo")),
+            "conflitos": [c["campo"] for c in (i.get("conflitos") or [])],
+            "sites": i.get("sites") or ([i["site"]] if i.get("site") else []),
+            "qtdFontes": i.get("qtd_fontes", 1),
+            "anuncios": anuncios,
+            "economia": i.get("economia") or 0,
+            "url": urls_item[0] if urls_item else "#",
             "novo": bool(i.get("novo")),
             "historico": hist,
-            "quedaPreco": queda_preco,
-            "quedaValor": queda_valor,
+            "queda": queda,
         })
 
-    novos_hoje = sum(1 for i in itens if i.get("novo"))
+    novos = sum(1 for d in dados if d["novo"])
+    quedas = sum(1 for d in dados if d["queda"])
+    multi = sum(1 for d in dados if d["qtdFontes"] > 1)
+    precos = [d["preco"] for d in dados if d["preco"]]
+    mediana_m2 = sorted(d["precoM2"] for d in dados if d["precoM2"])
+    med_m2 = mediana_m2[len(mediana_m2) // 2] if mediana_m2 else None
 
-    json_dados = json.dumps(dados_js, ensure_ascii=False).replace("</", "<\\/")
-
-    data_hoje_fmt = date.today().strftime("%d %b %y").upper()
-    filtros = config.FILTROS
-    subtitulo_cidades = " · ".join(
-        f"{cidade} ({perfil['quartos_min']}+ qtos, {perfil['area_min']}m²+)"
-        for cidade, perfil in config.FILTROS_POR_CIDADE.items()
+    json_dados = json.dumps(dados, ensure_ascii=False).replace("</", "<\\/")
+    ic = design.ICONES
+    hoje = date.today().strftime("%d/%m/%Y")
+    perfis = " · ".join(
+        f"{c} {p['quartos_min']}+ qtos, {p['area_min']}m²+"
+        for c, p in config.FILTROS_POR_CIDADE.items()
     )
 
     html_final = f"""<!DOCTYPE html>
@@ -305,241 +155,344 @@ def gerar_dashboard(itens: list[dict]) -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Diário de Busca — Apartamentos em Recife</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>{CSS}</style>
+<meta name="color-scheme" content="light dark">
+<title>Monitor de Apartamentos — Recife e Olinda</title>
+<style>{design.CSS_TOKENS}{design.CSS_BASE}</style>
 </head>
 <body>
+
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca">
+      <span class="marca-glifo">{ic['marca']}</span>
+      <span>Monitor de Apartamentos</span>
+      <span class="marca-sub">{hoje}</span>
+    </div>
+    <div class="topo-dir">
+      <button class="btn-tema" id="btn-tema" type="button"
+              aria-label="Alternar modo claro e escuro" title="Alternar tema">
+        <span id="ic-tema">{ic['lua']}</span>
+      </button>
+    </div>
+  </div>
+</header>
+
 <div class="pagina">
 
-  <header class="mastro">
-    <div class="mastro-topo">
-      <h1>Diário de Busca</h1>
-      <div class="data">{html.escape(data_hoje_fmt)}</div>
+  <section class="pulso" aria-label="Resumo da busca">
+    <div class="pulso-item">
+      <div class="pulso-rot">Imóveis</div>
+      <div class="pulso-val">{len(dados)}</div>
     </div>
-    <div class="subtitulo">Apartamentos para alugar · {html.escape(subtitulo_cidades)} · R$ {filtros['preco_min']:,.0f} – R$ {filtros['preco_max']:,.0f}</div>
-
-    <div class="barra-filtros">
-      <div class="campo">
-        {ICONES_SVG['quarto']}
-        <select id="f-quartos"><option value="0">Quartos: todos</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select>
-      </div>
-      <div class="campo">
-        {ICONES_SVG['bairro']}
-        <select id="f-cidade" class="largo"><option value="">Cidade: todas</option></select>
-      </div>
-      <div class="campo">
-        {ICONES_SVG['bairro']}
-        <select id="f-bairro"><option value="">Bairro: todos</option></select>
-      </div>
-      <div class="campo">
-        <select id="f-fonte" class="largo"><option value="">Fonte: todas</option></select>
-      </div>
-      <div class="campo valor">
-        {ICONES_SVG['valor']}
-        <input type="number" id="f-min" placeholder="mín" inputmode="numeric">
-        <span class="til">–</span>
-        <input type="number" id="f-max" placeholder="máx" inputmode="numeric">
-      </div>
-      <div class="campo" style="flex:1; min-width:150px;">
-        {ICONES_SVG['busca']}
-        <input type="text" id="f-busca" placeholder="Buscar por título ou site" style="width:100%;">
-      </div>
-      <div class="campo">
-        <select id="f-ordem" class="largo">
-          <option value="novo_preco">Novos + Menor preço</option>
-          <option value="preco_asc">Menor preço</option>
-          <option value="preco_desc">Maior preço</option>
-          <option value="area_desc">Maior área</option>
-          <option value="custo_m2">Melhor custo/m²</option>
-        </select>
-      </div>
-      <button class="btn" id="btn-buscar">{ICONES_SVG['busca']} Buscar</button>
-      <button class="btn fantasma" id="btn-limpar">{ICONES_SVG['limpar']} Limpar</button>
+    <div class="pulso-item{' destaque' if novos else ''}">
+      <div class="pulso-rot">Novos hoje</div>
+      <div class="pulso-val">{novos}</div>
     </div>
-
-    <div class="resumo" id="resumo"></div>
-  </header>
-
-  <main class="lista" id="lista"></main>
-
-  <template id="tpl-vazio">
-    <div class="vazio">
-      {ICONES_SVG['vazio']}
-      <div>Nenhum imóvel corresponde a esses filtros.</div>
+    <div class="pulso-item{' destaque' if quedas else ''}">
+      <div class="pulso-rot">Baixaram</div>
+      <div class="pulso-val">{quedas}</div>
     </div>
-  </template>
+    <div class="pulso-item">
+      <div class="pulso-rot">Multi-fonte</div>
+      <div class="pulso-val">{multi}</div>
+    </div>
+    <div class="pulso-item">
+      <div class="pulso-rot">Mediana R$/m²</div>
+      <div class="pulso-val">{f'{med_m2:.0f}' if med_m2 else '—'}</div>
+    </div>
+    <div class="pulso-item">
+      <div class="pulso-rot">Faixa</div>
+      <div class="pulso-val">{_fmt_preco(min(precos)) if precos else '—'}
+        <small>a {_fmt_preco(max(precos)) if precos else '—'}</small></div>
+    </div>
+  </section>
+
+  <div class="filtros">
+    <button class="chip" id="c-novos" type="button" aria-pressed="false">
+      Novos <span class="chip-n">{novos}</span></button>
+    <button class="chip" id="c-quedas" type="button" aria-pressed="false">
+      Baixaram <span class="chip-n">{quedas}</span></button>
+    <button class="chip" id="c-multi" type="button" aria-pressed="false">
+      Confirmados <span class="chip-n">{multi}</span></button>
+
+    <label class="campo">{ic['local']}
+      <select id="f-cidade" aria-label="Cidade"><option value="">Todas as cidades</option></select>
+    </label>
+    <label class="campo">
+      <select id="f-bairro" aria-label="Bairro"><option value="">Todos os bairros</option></select>
+    </label>
+    <label class="campo">{ic['filtro']}
+      <select id="f-quartos" aria-label="Quartos mínimos">
+        <option value="0">Quartos</option><option value="1">1+</option>
+        <option value="2">2+</option><option value="3">3+</option><option value="4">4+</option>
+      </select>
+    </label>
+    <label class="campo">{ic['moeda']}
+      <input id="f-min" type="number" placeholder="mín" aria-label="Preço mínimo">
+      <span class="sep">–</span>
+      <input id="f-max" type="number" placeholder="máx" aria-label="Preço máximo">
+    </label>
+    <label class="campo busca">{ic['busca']}
+      <input id="f-busca" type="search" placeholder="bairro, rua, fonte…" aria-label="Busca livre">
+    </label>
+    <label class="campo">
+      <select id="f-ordem" aria-label="Ordenação">
+        <option value="relevancia">Novos primeiro</option>
+        <option value="preco">Menor preço</option>
+        <option value="m2">Melhor R$/m²</option>
+        <option value="area">Maior área</option>
+        <option value="tempo">Mais recentes no mercado</option>
+      </select>
+    </label>
+    <button class="btn-limpar" id="btn-limpar" type="button">Limpar</button>
+  </div>
+
+  <div class="contagem" id="contagem"></div>
+  <div id="lista"></div>
+
+  {_painel_saude(saude)}
 
   <footer class="rodape">
-    Gerado localmente pelo Monitor de Apartamentos · {len(dados_js)} imóveis no total · {novos_hoje} novos hoje
+    Filtros: {perfis} · R$ {config.FILTROS['preco_min']:,}–{config.FILTROS['preco_max']:,}
+    · anúncio com mais de {config.MAX_DIAS_DESDE_ATUALIZACAO} dias sem atualização é descartado<br>
+    Preço exibido é o menor entre as fontes do imóvel. "{NAO_LOCALIZADO}" marca dado que a fonte não informou.
   </footer>
 </div>
 
 <script>
 const DADOS = {json_dados};
+const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
+const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua')}, ensure_ascii=False)};
 
-const ICONE_AREA = `{ICONES_SVG['area']}`;
-const ICONE_QUARTO = `{ICONES_SVG['quarto']}`;
-const ICONE_BAIRRO = `{ICONES_SVG['bairro']}`;
-const ICONE_EXTERNO = `{ICONES_SVG['externo']}`;
-
-const elLista = document.getElementById('lista');
-const elResumo = document.getElementById('resumo');
-const selCidade = document.getElementById('f-cidade');
-const selBairro = document.getElementById('f-bairro');
-const selQuartos = document.getElementById('f-quartos');
-const selFonte = document.getElementById('f-fonte');
-const selOrdem = document.getElementById('f-ordem');
-const inpMin = document.getElementById('f-min');
-const inpMax = document.getElementById('f-max');
-const inpBusca = document.getElementById('f-busca');
-
-const cidades = [...new Set(DADOS.map(i => i.cidade).filter(Boolean))].sort();
-cidades.forEach(c => {{
-  const op = document.createElement('option');
-  op.value = c; op.textContent = c;
-  selCidade.appendChild(op);
+/* ---------- tema ---------- */
+const raiz = document.documentElement;
+const btnTema = document.getElementById('btn-tema');
+const icTema = document.getElementById('ic-tema');
+function escuroAtivo(){{
+  const t = raiz.getAttribute('data-tema');
+  if (t) return t === 'escuro';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}}
+function pintarIcone(){{ icTema.innerHTML = escuroAtivo() ? IC.sol : IC.lua; }}
+try {{
+  const salvo = localStorage.getItem('tema');
+  if (salvo) raiz.setAttribute('data-tema', salvo);
+}} catch (e) {{}}
+pintarIcone();
+btnTema.addEventListener('click', () => {{
+  const novo = escuroAtivo() ? 'claro' : 'escuro';
+  raiz.setAttribute('data-tema', novo);
+  try {{ localStorage.setItem('tema', novo); }} catch (e) {{}}
+  pintarIcone();
 }});
 
-// bairro é atrelado à cidade escolhida: sem isso a lista mistura bairro de
-// Recife com o de Olinda (ex: tem "Carmo" nas duas), confuso pra filtrar.
-function atualizarBairros(){{
-  const cidadeAtual = selCidade.value;
-  const bairroSelecionado = selBairro.value;
-  const escopo = cidadeAtual ? DADOS.filter(i => i.cidade === cidadeAtual) : DADOS;
-  const bairrosDaCidade = [...new Set(escopo.map(i => i.bairro).filter(Boolean))].sort();
+/* ---------- utilidades ---------- */
+const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g,
+  c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));
+const num = v => v == null ? null : Number(v);
+const brl = v => 'R$ ' + Number(v).toLocaleString('pt-BR', {{maximumFractionDigits:0}});
 
-  selBairro.innerHTML = '<option value="">Bairro: todos</option>';
-  bairrosDaCidade.forEach(b => {{
-    const op = document.createElement('option');
-    op.value = b; op.textContent = b;
-    selBairro.appendChild(op);
+/* Faixa de preço: mostra a trajetória sem ocupar espaço de gráfico.
+   Verde quando desceu, âmbar quando subiu -- cor só quando há movimento. */
+function faixa(hist){{
+  if (!hist || hist.length < 2) return '';
+  const p = hist.map(h => h[1]).filter(v => v != null);
+  if (p.length < 2) return '';
+  const mn = Math.min(...p), mx = Math.max(...p), rg = (mx - mn) || 1;
+  const W = 56, H = 20, n = p.length;
+  const pts = p.map((v,i) => `${{(i/(n-1)*W).toFixed(1)}},${{(H-2 - (v-mn)/rg*(H-5)).toFixed(1)}}`).join(' ');
+  const cor = p[p.length-1] < p[0] ? 'var(--bom)' : (p[p.length-1] > p[0] ? 'var(--atencao)' : 'var(--tinta-fraca)');
+  return `<svg class="faixa" viewBox="0 0 ${{W}} ${{H}}" aria-hidden="true">
+    <polyline points="${{pts}}" fill="none" stroke="${{cor}}" stroke-width="1.6"
+      stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}}
+
+/* ---------- filtros ---------- */
+const el = id => document.getElementById(id);
+const selCidade = el('f-cidade'), selBairro = el('f-bairro'), selQuartos = el('f-quartos');
+const selOrdem = el('f-ordem'), inpMin = el('f-min'), inpMax = el('f-max'), inpBusca = el('f-busca');
+const chips = {{novos: el('c-novos'), quedas: el('c-quedas'), multi: el('c-multi')}};
+
+[...new Set(DADOS.map(d => d.cidade).filter(Boolean))].sort().forEach(c => {{
+  const o = document.createElement('option'); o.value = o.textContent = c; selCidade.appendChild(o);
+}});
+
+function preencherBairros(){{
+  const cid = selCidade.value, atual = selBairro.value;
+  const escopo = cid ? DADOS.filter(d => d.cidade === cid) : DADOS;
+  selBairro.innerHTML = '<option value="">Todos os bairros</option>';
+  [...new Set(escopo.map(d => d.bairro).filter(Boolean))].sort().forEach(b => {{
+    const o = document.createElement('option'); o.value = o.textContent = b; selBairro.appendChild(o);
   }});
-  // mantém o bairro escolhido se ele ainda existir na cidade nova
-  if (bairrosDaCidade.includes(bairroSelecionado)) selBairro.value = bairroSelecionado;
+  if ([...selBairro.options].some(o => o.value === atual)) selBairro.value = atual;
 }}
-atualizarBairros();
+preencherBairros();
 
-const fontes = [...new Set(DADOS.map(i => i.site))].sort();
-fontes.forEach(f => {{
-  const op = document.createElement('option');
-  op.value = f; op.textContent = f;
-  selFonte.appendChild(op);
-}});
+Object.values(chips).forEach(c => c.addEventListener('click', () => {{
+  c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+  render();
+}}));
 
-function escapeHtml(s){{
-  return (s || '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));
-}}
+function filtrar(){{
+  const qMin = parseInt(selQuartos.value || '0', 10);
+  const cid = selCidade.value, bai = selBairro.value;
+  const mn = inpMin.value ? parseFloat(inpMin.value) : null;
+  const mx = inpMax.value ? parseFloat(inpMax.value) : null;
+  const q = (inpBusca.value || '').trim().toLowerCase();
+  const soNovos = chips.novos.getAttribute('aria-pressed') === 'true';
+  const soQuedas = chips.quedas.getAttribute('aria-pressed') === 'true';
+  const soMulti = chips.multi.getAttribute('aria-pressed') === 'true';
 
-function sparkline(historico){{
-  if (!historico || historico.length < 2) return '';
-  const precos = historico.map(h => h[1]).filter(v => v !== null && v !== undefined);
-  if (precos.length < 2) return '';
-  const mn = Math.min(...precos), mx = Math.max(...precos);
-  const rng = mx - mn || 1;
-  const W = 64, H = 22, n = precos.length;
-  const pts = precos.map((p, i) => `${{(i / (n - 1) * W).toFixed(1)}},${{(H - (p - mn) / rng * (H - 2) - 1).toFixed(1)}}`).join(' ');
-  const cor = precos[precos.length - 1] < precos[0] ? '#205C4F' : '#8B2020';
-  return `<span class="sparkline"><svg width="${{W}}" height="${{H}}" viewBox="0 0 ${{W}} ${{H}}"><polyline points="${{pts}}" fill="none" stroke="${{cor}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
-}}
-
-function limparTitulo(s){{
-  s = (s || 'Apartamento')
-    .replace(/[\\r\\n]+/g, ' ')
-    .replace(/chevron_left|chevron_right/g, '')
-    .replace(/\\s{{2,}}/g, ' ')
-    .trim();
-  if (s.length > 90) s = s.slice(0, 87) + '…';
-  return s;
-}}
-
-function renderizar(){{
-  const quartosMin = parseInt(selQuartos.value || '0', 10);
-  const cidade = selCidade.value;
-  const bairro = selBairro.value;
-  const fonte = selFonte.value;
-  const ordem = selOrdem.value;
-  const min = inpMin.value ? parseFloat(inpMin.value) : null;
-  const max = inpMax.value ? parseFloat(inpMax.value) : null;
-  const busca = (inpBusca.value || '').trim().toLowerCase();
-
-  const filtrados = DADOS.filter(item => {{
-    if (quartosMin > 0 && (!item.quartos || item.quartos < quartosMin)) return false;
-    if (cidade && item.cidade !== cidade) return false;
-    if (bairro && item.bairro !== bairro) return false;
-    if (fonte && item.site !== fonte) return false;
-    if (min !== null && (item.preco === null || item.preco < min)) return false;
-    if (max !== null && (item.preco === null || item.preco > max)) return false;
-    if (busca) {{
-      const alvo = (item.titulo + ' ' + item.site + ' ' + item.bairro + ' ' + item.cidade).toLowerCase();
-      if (!alvo.includes(busca)) return false;
+  return DADOS.filter(d => {{
+    if (soNovos && !d.novo) return false;
+    if (soQuedas && !d.queda) return false;
+    if (soMulti && d.qtdFontes < 2) return false;
+    if (qMin > 0 && (!d.quartos || d.quartos < qMin)) return false;
+    if (cid && d.cidade !== cid) return false;
+    if (bai && d.bairro !== bai) return false;
+    if (mn != null && (d.preco == null || d.preco < mn)) return false;
+    if (mx != null && (d.preco == null || d.preco > mx)) return false;
+    if (q) {{
+      const alvo = [d.titulo, d.bairro, d.cidade, d.logradouro, d.sites.join(' ')]
+        .join(' ').toLowerCase();
+      if (!alvo.includes(q)) return false;
     }}
     return true;
   }});
+}}
 
-  filtrados.sort((a, b) => {{
-    if (ordem === 'preco_asc') return (a.preco || 99999) - (b.preco || 99999);
-    if (ordem === 'preco_desc') return (b.preco || 0) - (a.preco || 0);
-    if (ordem === 'area_desc') return (b.area || 0) - (a.area || 0);
-    if (ordem === 'custo_m2') {{
-      const ra = a.preco && a.area ? a.preco / a.area : 99999;
-      const rb = b.preco && b.area ? b.preco / b.area : 99999;
-      return ra - rb;
-    }}
-    // novo_preco: novos primeiro, depois menor preço
-    if (a.novo !== b.novo) return a.novo ? -1 : 1;
-    return (a.preco || 99999) - (b.preco || 99999);
-  }});
+function ordenar(lista){{
+  const o = selOrdem.value;
+  const c = [...lista];
+  if (o === 'preco') return c.sort((a,b) => (a.preco ?? 1e9) - (b.preco ?? 1e9));
+  if (o === 'm2') return c.sort((a,b) => (a.precoM2 ?? 1e9) - (b.precoM2 ?? 1e9));
+  if (o === 'area') return c.sort((a,b) => (b.area ?? 0) - (a.area ?? 0));
+  if (o === 'tempo') return c.sort((a,b) => (a.diasAnunciado ?? 1e9) - (b.diasAnunciado ?? 1e9));
+  // relevância: novo primeiro, depois quem baixou, depois menor preço
+  return c.sort((a,b) =>
+    (b.novo - a.novo) || ((b.queda ? 1 : 0) - (a.queda ? 1 : 0)) ||
+    ((a.preco ?? 1e9) - (b.preco ?? 1e9)));
+}}
 
-  elResumo.textContent = `${{filtrados.length}} de ${{DADOS.length}} imóveis · ${{filtrados.filter(i => i.novo).length}} novos hoje`;
+/* ---------- render ---------- */
+const lista = el('lista'), contagem = el('contagem');
 
-  elLista.innerHTML = '';
-  if (filtrados.length === 0) {{
-    elLista.appendChild(document.getElementById('tpl-vazio').content.cloneNode(true));
+function selos(d){{
+  const s = [];
+  if (d.novo) s.push('<span class="selo selo-novo">Novo</span>');
+  if (d.queda) s.push(`<span class="selo selo-queda">Baixou ${{brl(d.queda)}}</span>`);
+  if (d.qtdFontes > 1) s.push(`<span class="selo selo-fontes">${{d.qtdFontes}} fontes confirmam</span>`);
+  if (d.economia > 0) s.push(`<span class="selo selo-queda">Economize ${{brl(d.economia)}}</span>`);
+  if (!d.custoCompleto) s.push('<span class="selo selo-alerta" title="a fonte não informou o condomínio">Custo parcial</span>');
+  if (d.conflitos.length) s.push(`<span class="selo selo-alerta">Fontes divergem: ${{esc(d.conflitos.join(', '))}}</span>`);
+  if (d.diasAnunciado > 60) s.push(`<span class="selo">${{d.diasAnunciado}}d no mercado</span>`);
+  // as fontes vêm por último: contexto, não chamada de atenção
+  d.sites.forEach(f => s.push(`<span class="selo selo-fonte">${{esc(f)}}</span>`));
+  return s.join('');
+}}
+
+function ficha(d){{
+  const p = [];
+  if (d.quartos) p.push(`<span><b>${{d.quartos}}</b> quartos</span>`);
+  if (d.area) p.push(`<span><b>${{d.area}}</b> m²</span>`);
+  if (d.banheiros != null) p.push(`<span><b>${{d.banheiros}}</b> banh.</span>`);
+  if (d.vagas != null) p.push(`<span><b>${{d.vagas}}</b> vaga${{d.vagas === 1 ? '' : 's'}}</span>`);
+  if (d.andar != null) p.push(`<span><b>${{d.andar}}</b>º andar</span>`);
+  return p.join('');
+}}
+
+function render(){{
+  const res = ordenar(filtrar());
+  contagem.textContent = res.length === DADOS.length
+    ? `${{res.length}} imóveis`
+    : `${{res.length}} de ${{DADOS.length}} imóveis`;
+
+  lista.innerHTML = '';
+  if (!res.length){{
+    lista.innerHTML = `<div class="estado-vazio">${{IC.vazio}}<div>Nenhum imóvel com esses filtros.</div></div>`;
     return;
   }}
 
-  for (const item of filtrados) {{
-    const linha = document.createElement('div');
-    linha.className = 'linha';
-    const quedaBadge = item.quedaPreco
-      ? `<span class="queda">↓ R$ ${{item.quedaValor ? item.quedaValor.toLocaleString('pt-BR') : ''}}</span>`
-      : '';
+  const frag = document.createDocumentFragment();
+  for (const d of res){{
+    const linha = document.createElement('article');
+    linha.className = 'imovel';
+    const abrivel = d.anuncios.length > 1;
+    const local = [d.bairro, d.cidade].filter(Boolean).join(', ');
+
     linha.innerHTML = `
-      <div class="linha-principal">
-        <p class="linha-titulo">
-          <span class="linha-titulo-texto">${{escapeHtml(limparTitulo(item.titulo))}}</span>
-          ${{item.novo ? '<span class="carimbo">NOVO</span>' : ''}}
-          ${{quedaBadge}}
-          ${{sparkline(item.historico)}}
-        </p>
-        <div class="linha-meta">
-          <span class="linha-site">${{escapeHtml(item.site)}}</span>
-          ${{(item.bairro || item.cidade) ? `<span>${{ICONE_BAIRRO}} ${{escapeHtml([item.bairro, item.cidade].filter(Boolean).join(', '))}}</span>` : ''}}
-          ${{item.quartos ? `<span>${{ICONE_QUARTO}} ${{item.quartos}} quartos</span>` : ''}}
-          ${{item.area ? `<span>${{ICONE_AREA}} ${{item.area}} m²</span>` : ''}}
+      <div class="imovel-corpo">
+        <div class="imovel-cab">
+          ${{abrivel ? '<span class="seta">&#9654;</span>' : '<span class="seta"></span>'}}
+          <h3 class="imovel-titulo">${{esc(d.titulo)}}</h3>
+          ${{faixa(d.historico)}}
         </div>
+        <div class="imovel-local">${{IC.local}}<span>${{esc(local)}}</span>
+          ${{d.logradouro
+              ? `<span class="rua">· ${{esc(d.logradouro)}}</span>`
+              : `<span class="rua rua-ausente">· endereço ${{NAO_LOC}}</span>`}}</div>
+        <div class="ficha">${{ficha(d)}}</div>
+        <div class="selos">${{selos(d)}}</div>
       </div>
-      <div class="linha-preco">${{escapeHtml(item.precoFmt)}}<small>/mês</small></div>
-      <a class="abrir" href="${{item.url}}" target="_blank" rel="noopener">Abrir ${{ICONE_EXTERNO}}</a>
-    `;
-    elLista.appendChild(linha);
+      <div class="imovel-lado">
+        <div class="preco-val">${{esc(d.precoFmt)}}<span class="preco-un">por mês</span></div>
+        ${{d.precoM2 ? `<span class="preco-m2">${{d.precoM2.toFixed(0)}} /m²</span>` : ''}}
+        <a class="abrir" href="${{esc(d.url)}}" target="_blank" rel="noopener">
+          Ver anúncio ${{IC.externo}}</a>
+      </div>`;
+    frag.appendChild(linha);
+
+    // Progressive disclosure: só o imóvel com mais de uma oferta expande.
+    // O colapsado já mostra tudo que existe nos demais.
+    if (abrivel){{
+      linha.classList.add('abrivel');
+      linha.setAttribute('role', 'button');
+      linha.setAttribute('tabindex', '0');
+      linha.setAttribute('aria-expanded', 'false');
+
+      const painel = document.createElement('div');
+      painel.className = 'ofertas';
+      painel.hidden = true;
+      painel.innerHTML = `<table>
+        <thead><tr><th>Fonte</th><th style="text-align:right">Custo mensal</th>
+          <th>Composição</th><th></th></tr></thead>
+        <tbody>${{d.anuncios.map((o,i) => `
+          <tr class="${{i === 0 ? 'melhor' : ''}}">
+            <td>${{esc(o.site)}}${{i === 0 ? '<span class="marca-melhor">melhor</span>' : ''}}</td>
+            <td class="of-preco">${{o.preco ? brl(o.preco) : NAO_LOC}}</td>
+            <td class="of-obs">${{o.custo_completo
+                ? (o.condominio ? 'inclui condomínio ' + brl(o.condominio) : 'custo total')
+                : 'sem condomínio informado'}}</td>
+            <td class="of-link"><a href="${{esc(o.url)}}" target="_blank" rel="noopener">abrir</a></td>
+          </tr>`).join('')}}</tbody></table>`;
+      frag.appendChild(painel);
+
+      const alternar = () => {{
+        const aberto = linha.getAttribute('aria-expanded') === 'true';
+        linha.setAttribute('aria-expanded', String(!aberto));
+        painel.hidden = aberto;
+      }};
+      linha.addEventListener('click', e => {{ if (!e.target.closest('a')) alternar(); }});
+      linha.addEventListener('keydown', e => {{
+        if (e.key === 'Enter' || e.key === ' '){{ e.preventDefault(); alternar(); }}
+      }});
+    }}
   }}
+  lista.appendChild(frag);
 }}
 
-document.getElementById('btn-buscar').addEventListener('click', renderizar);
-document.getElementById('btn-limpar').addEventListener('click', () => {{
-  selQuartos.value = '0'; selCidade.value = ''; selFonte.value = '';
-  selOrdem.value = 'novo_preco'; inpMin.value = ''; inpMax.value = ''; inpBusca.value = '';
-  atualizarBairros();
-  renderizar();
+selCidade.addEventListener('change', () => {{ preencherBairros(); render(); }});
+[selBairro, selQuartos, selOrdem].forEach(x => x.addEventListener('change', render));
+[inpMin, inpMax].forEach(x => x.addEventListener('input', render));
+inpBusca.addEventListener('input', render);
+el('btn-limpar').addEventListener('click', () => {{
+  selCidade.value = ''; selQuartos.value = '0'; selOrdem.value = 'relevancia';
+  inpMin.value = inpMax.value = inpBusca.value = '';
+  Object.values(chips).forEach(c => c.setAttribute('aria-pressed', 'false'));
+  preencherBairros(); render();
 }});
-inpBusca.addEventListener('keydown', e => {{ if (e.key === 'Enter') renderizar(); }});
-selCidade.addEventListener('change', () => {{ atualizarBairros(); renderizar(); }});
-[selQuartos, selBairro, selFonte, selOrdem].forEach(el => el.addEventListener('change', renderizar));
 
-renderizar();
+render();
 </script>
 </body>
 </html>
