@@ -745,6 +745,21 @@ def aplicar_ciclo_de_vida(fontes_confiaveis: set[str] | None,
     return {"suspeitos": suspeitos, "inativos": inativos}
 
 
+def _primeira_foto(anuncios: list[dict]) -> str | None:
+    """Primeira URL de foto entre os anúncios (o campo vem como JSON)."""
+    for a in anuncios:
+        fotos = a.get("fotos")
+        if isinstance(fotos, str):
+            try:
+                fotos = json.loads(fotos)
+            except (ValueError, TypeError):
+                fotos = [fotos] if fotos.startswith("http") else []
+        for url in fotos or []:
+            if isinstance(url, str) and url.startswith("http"):
+                return url
+    return None
+
+
 def consolidar_imoveis(itens: list[dict]) -> list[dict]:
     """Agrupa os anúncios em imóveis físicos e persiste o resultado.
 
@@ -788,6 +803,11 @@ def consolidar_imoveis(itens: list[dict]) -> list[dict]:
         imovel["preco_m2"] = round(custo / area, 2) if custo and area else None
         imovel["titulo"] = utils.gerar_titulo(imovel)
         imovel["novo"] = any(a.get("novo") for a in anuncios)
+
+        # Foto de capa: o card do dashboard é visual, e nem toda fonte traz
+        # imagem. Pega a primeira foto disponível entre os anúncios do
+        # imóvel -- se nenhuma tiver, o card cai no marcador cinza.
+        imovel["foto"] = _primeira_foto(anuncios)
 
         # Anúncios individuais, do mais barato para o mais caro. É o que o
         # card expansível mostra: o mesmo apartamento costuma sair por
