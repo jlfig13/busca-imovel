@@ -2,7 +2,7 @@
 
 Robô que busca apartamentos para alugar em Recife e Olinda em ~20 sites
 (portais grandes tipo OLX/Zap/Viva Real/Imovelweb/REMAX + imobiliárias
-locais), roda **1x por semana no GitHub Actions** e publica o resultado
+locais), roda **todo dia no GitHub Actions** e publica o resultado
 num **dashboard online** (GitHub Pages) — sem e-mail, é consulta direta.
 
 **Filtros atuais** (`config.py`):
@@ -15,7 +15,7 @@ Veja [BACKLOG.md](BACKLOG.md) para o roadmap de melhorias em andamento.
 ## Como funciona
 
 ```
-.github/workflows/scrape.yml   -> roda toda segunda 09h (BRT), + botão manual
+.github/workflows/scrape.yml   -> roda todo dia 07:13 (BRT), + botão manual
         │
         ├─ python main.py             (raspa todos os sites, aplica filtro)
         ├─ commita saida/apartamentos.db + .xlsx de volta no repo
@@ -34,7 +34,7 @@ publicado no GitHub, o dashboard é só um link.
    **Source: GitHub Actions**.
 3. Rode o workflow uma vez manualmente: aba **Actions** →
    "Monitor de Apartamentos" → **Run workflow**. Depois disso ele roda
-   sozinho toda segunda.
+   sozinho todo dia às 07:13 (BRT).
 4. O link do dashboard fica em **Settings → Pages** (formato
    `https://SEU_USUARIO.github.io/SEU_REPO/`).
 
