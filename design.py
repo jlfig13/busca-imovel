@@ -417,6 +417,35 @@ a{color:inherit;}
   position:absolute; inset:0; display:grid; place-items:center;
   color:var(--tinta-fraca);
 }
+/* Sem foto (fonte que não publica imagem, ou link morto) o espaço encolhe:
+   manter 16/10 de marcador cinza gastaria meia tela de celular para dizer
+   "não temos foto". */
+.foto.sem-foto img{display:none;}
+.foto.sem-foto{aspect-ratio:auto; min-height:74px;}
+
+/* Setas da galeria: aparecem no hover no desktop e ficam sempre visíveis no
+   toque, onde não existe hover para revelar nada. */
+.foto-nav{
+  position:absolute; top:50%; transform:translateY(-50%);
+  width:30px; height:30px; border-radius:50%; cursor:pointer; padding:0;
+  border:0; background:rgba(13,17,20,.55); color:#fff;
+  display:grid; place-items:center; opacity:0; transition:opacity .15s ease;
+}
+.foto-nav svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;
+  stroke-linecap:round;stroke-linejoin:round;}
+.foto-nav.ant{left:8px;}
+.foto-nav.ant svg{transform:rotate(180deg);}
+.foto-nav.prox{right:8px;}
+.imovel:hover .foto-nav{opacity:1;}
+.foto-nav:hover{background:rgba(13,17,20,.78);}
+.foto-conta{
+  position:absolute; right:8px; bottom:8px;
+  background:rgba(13,17,20,.6); color:#fff;
+  font-family:var(--mono); font-size:10.5px; padding:2px 7px; border-radius:10px;
+}
+@media (hover:none){
+  .foto-nav{opacity:1; width:34px; height:34px;}
+}
 .foto-vazia svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.4;}
 /* Selos de ação sobre a foto -- é o que o olho procura primeiro na grade. */
 .foto-selos{
@@ -453,6 +482,14 @@ a{color:inherit;}
 .ficha b{font-weight:650; color:var(--tinta);}
 
 /* Rodapé do card: preço à esquerda, ação à direita. */
+/* Por que este imóvel foi sugerido. Recomendação sem motivo é adivinhação:
+   sem a linha, o selo vira enfeite e a pessoa não sabe se concorda. */
+.porque{
+  display:flex; align-items:flex-start; gap:6px;
+  font-size:12px; color:var(--ocre); line-height:1.45;
+}
+.porque svg{width:12px;height:12px;fill:currentColor;stroke:none;flex-shrink:0;margin-top:2px;}
+
 .imovel-rodape{
   margin-top:auto; padding-top:12px;
   display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
@@ -505,6 +542,9 @@ a{color:inherit;}
   background:var(--superficie-2); color:var(--tinta-suave);
   white-space:nowrap;
 }
+/* O selo da sugestão é o único que usa o acento quente cheio: é a única
+   marca da tela que diz "olhe este aqui primeiro". */
+.selo-melhor{background:var(--ocre); color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.22);}
 .selo-novo{background:var(--mar); color:#fff;}
 .selo-queda{background:var(--ocre); color:#fff;}
 .foto-selos .selo{box-shadow:0 1px 3px rgba(0,0,0,.22);}
@@ -673,7 +713,15 @@ a{color:inherit;}
   .imovel{grid-template-columns:1fr;}
   .foto{aspect-ratio:16/10;}
   .imovel-corpo{padding:13px 14px 14px;}
-  .imovel-rodape{padding-top:10px;}
+  /* Por que este imóvel foi sugerido. Recomendação sem motivo é adivinhação:
+   sem a linha, o selo vira enfeite e a pessoa não sabe se concorda. */
+.porque{
+  display:flex; align-items:flex-start; gap:6px;
+  font-size:12px; color:var(--ocre); line-height:1.45;
+}
+.porque svg{width:12px;height:12px;fill:currentColor;stroke:none;flex-shrink:0;margin-top:2px;}
+
+.imovel-rodape{padding-top:10px;}
   .acoes{margin-left:0; width:100%;}
   .btn-abrir,.btn-ofertas{height:42px; flex:1 1 auto; justify-content:center;}
   .ofertas{padding:12px 14px 14px;}
@@ -700,6 +748,7 @@ ICONES = {
     "filtro": '<svg viewBox="0 0 20 20"><path d="M3.5 5.5h13M6 10h8M8.5 14.5h3"/></svg>',
     "moeda": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.8"/><path d="M10 6v8M12 8.2c0-1-.9-1.7-2-1.7s-2 .7-2 1.6c0 2.2 4 1.2 4 3.4 0 .9-.9 1.6-2 1.6s-2-.7-2-1.7"/></svg>',
     "seta": '<svg viewBox="0 0 20 20"><path d="m8 5 5 5-5 5"/></svg>',
+    "estrela": '<svg viewBox="0 0 20 20"><path d="m10 3 2.2 4.5 5 .7-3.6 3.5.9 4.9L10 14.3l-4.5 2.3.9-4.9L2.8 8.2l5-.7z"/></svg>',
     "info": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.2"/><path d="M10 9.2v4.3M10 6.6v.1"/></svg>',
     "sol": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 4.3l-1.4 1.4M5.7 14.3l-1.4 1.4"/></svg>',
     "lua": '<svg viewBox="0 0 20 20"><path d="M16.5 11.8A6.8 6.8 0 0 1 8.2 3.5a6.8 6.8 0 1 0 8.3 8.3Z"/></svg>',

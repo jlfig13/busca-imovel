@@ -110,6 +110,35 @@
   R$ X" já diz; solta ao lado do título, lia como risco atravessando o card.
   Foi para o bloco de preço, onde tem a que se referir.
 
+### Fotos e sugestão (20/08/2026)
+
+- [x] **Foto do card em toda fonte** — o Playwright já tem a imagem no DOM
+  da listagem; custo zero de rede. Resolve REMAX (página renderizada por JS)
+  e OLX (403 em requisição direta), que não entregam galeria de outro jeito.
+- [x] **Galeria da página do anúncio** (`galeria.py`) — parte de uma âncora
+  que a página declara como sua (JSON-LD `image` ou `og:image`) e recolhe o
+  resto da MESMA pasta do CDN. Recolher todo `<img>` traria logo, ícone de
+  WhatsApp e selo de CRECI — medido no Portal CRECI, onde o primeiro `<img>`
+  é o logotipo. Até 12 fotos: o banco é commitado a cada rodada.
+  Roda só para os imóveis EXIBIDOS, depois do recorte de bairros.
+  Medição: 7 → 11 de 16 imóveis com foto; CTI e Camila Melo entregam 12,
+  Moradasol 7, Rede Imóveis 6.
+  Desiste do host após 2 falhas: OLX gastava 9 requisições (3 anúncios × 3
+  retries) para nenhuma foto.
+- [x] **Carrossel no card** — uma `<img>` trocando de `src`, não as 12 no
+  DOM: com 19 cards seriam ~230 imagens pedidas de uma vez, e a lista
+  levaria segundos para ficar utilizável no celular.
+- [x] **Nota de afinidade** (`afinidade.py`, perfil em `config.PERFIL`) — o
+  filtro responde "cabe?", a nota responde "é o melhor?". Perguntado ao
+  usuário: pesam custo mensal, área pelo preço e bairro preferido (Casa
+  Amarela, Casa Forte, Graças, Espinheiro, Aflitos, Jaqueira); mínimo de 3
+  quartos é requisito; selo "Melhor achado" nos até 3 primeiros.
+  A nota é RELATIVA à lista do dia — nota absoluta exigiria recalibrar
+  constante toda vez que o mercado ou o filtro mudasse.
+  Requisito não descontava o suficiente: um 2 quartos barato e espaçoso
+  marcava 38 contra 16 de um 3 quartos caro. Virou chave de ordenação
+  (`atende`), não só desconto.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.

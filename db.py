@@ -519,6 +519,26 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
 DIAS_PARA_PODA = 180
 
 
+def atualizar_fotos(fotos_por_url: dict[str, list]) -> int:
+    """Grava a galeria coletada depois da rodada.
+
+    A coleta principal já fechou quando isto roda: as fotos completas são
+    buscadas só para os imóveis que vão aparecer no dashboard, então a
+    atualização vem em separado em vez de junto com salvar_execucao."""
+    if not fotos_por_url:
+        return 0
+    conn = conectar()
+    cur = conn.cursor()
+    for url, fotos in fotos_por_url.items():
+        cur.execute(
+            "UPDATE imoveis SET fotos = ? WHERE url = ?",
+            (json.dumps(fotos, ensure_ascii=False), url),
+        )
+    conn.commit()
+    conn.close()
+    return len(fotos_por_url)
+
+
 def rendimento_por_fonte(ultimas: int = 10) -> list[dict]:
     """Custo x retorno de cada fonte nas últimas rodadas.
 
@@ -876,19 +896,28 @@ def aplicar_ciclo_de_vida(fontes_confiaveis: set[str] | None,
     return {"suspeitos": suspeitos, "inativos": inativos}
 
 
-def _primeira_foto(anuncios: list[dict]) -> str | None:
-    """Primeira URL de foto entre os anúncios (o campo vem como JSON)."""
+def _lista_fotos(bruto) -> list[str]:
+    """O campo chega como JSON (do banco) ou já como lista (da coleta)."""
+    if isinstance(bruto, str):
+        try:
+            bruto = json.loads(bruto)
+        except (ValueError, TypeError):
+            bruto = [bruto] if bruto.startswith("http") else []
+    return [u for u in (bruto or []) if isinstance(u, str) and u.startswith("http")]
+
+
+def _fotos_do_imovel(anuncios: list[dict], limite: int = 12) -> list[str]:
+    """Galeria do imóvel: a maior lista entre os anúncios que o anunciam.
+
+    Não junta as listas de fontes diferentes. Dois portais fotografam o
+    mesmo apartamento, então unir só produziria a mesma sala duas vezes,
+    com URLs diferentes -- o carrossel ficaria repetindo cômodo."""
+    melhor: list[str] = []
     for a in anuncios:
-        fotos = a.get("fotos")
-        if isinstance(fotos, str):
-            try:
-                fotos = json.loads(fotos)
-            except (ValueError, TypeError):
-                fotos = [fotos] if fotos.startswith("http") else []
-        for url in fotos or []:
-            if isinstance(url, str) and url.startswith("http"):
-                return url
-    return None
+        fotos = _lista_fotos(a.get("fotos"))
+        if len(fotos) > len(melhor):
+            melhor = fotos
+    return melhor[:limite]
 
 
 def consolidar_imoveis(itens: list[dict]) -> list[dict]:
@@ -938,7 +967,8 @@ def consolidar_imoveis(itens: list[dict]) -> list[dict]:
         # Foto de capa: o card do dashboard é visual, e nem toda fonte traz
         # imagem. Pega a primeira foto disponível entre os anúncios do
         # imóvel -- se nenhuma tiver, o card cai no marcador cinza.
-        imovel["foto"] = _primeira_foto(anuncios)
+        imovel["fotos"] = _fotos_do_imovel(anuncios)
+        imovel["foto"] = imovel["fotos"][0] if imovel["fotos"] else None
 
         # Anúncios individuais, do mais barato para o mais caro. É o que o
         # card expansível mostra: o mesmo apartamento costuma sair por

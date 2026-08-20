@@ -41,6 +41,15 @@ _RE_OLX_NUMEROS = re.compile(
 )
 
 
+# Imagem de interface que aparece dentro do card (selo do portal, ícone de
+# favorito, bandeira de "destaque") -- não é foto do imóvel.
+_RE_FOTO_LIXO = re.compile(
+    r"(logo|icone|icon|sprite|avatar|placeholder|whatsapp|banner|selo"
+    r"|marca|flag|blank|spacer)",
+    re.IGNORECASE,
+)
+
+
 def _extrair_cards(page_obj, seletor_href: str) -> list[dict]:
     """Extrai cards de imóvel do DOM já carregado.
     seletor_href: substring do href que identifica links de imóvel individual.
@@ -115,7 +124,25 @@ def _extrair_cards(page_obj, seletor_href: str) -> list[dict]:
                     break;
                 }
             }
-            return {href, text: melhorTexto};
+            // Foto do card. Vale por dois motivos: fonte que renderiza
+            // por JS (REMAX) ou bloqueia requisição direta (OLX 403) não
+            // entrega galeria nenhuma pela página do anúncio, e aqui a
+            // imagem já está no DOM que o Playwright abriu -- custo zero.
+            // srcset vem como "url 320w, url 640w": fica a última, que é a
+            // maior.
+            let foto = null;
+            for (const img of el.querySelectorAll("img")) {
+                const bruto = img.getAttribute("srcset");
+                const cand = bruto
+                    ? bruto.split(",").pop().trim().split(" ")[0]
+                    : (img.currentSrc || img.src ||
+                       img.getAttribute("data-src") || "");
+                if (cand && cand.startsWith("http") && !cand.includes("data:")) {
+                    foto = cand;
+                    break;
+                }
+            }
+            return {href, text: melhorTexto, foto};
         }).filter(Boolean);
     }"""
     return page_obj.eval_on_selector_all(
@@ -257,8 +284,16 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
     if m_ban:
         banheiros = int(m_ban.group(1))
 
+    # Uma foto só, e é a do card: a galeria completa vem depois, da página
+    # do anúncio, e só para os imóveis que serão exibidos.
+    fotos = []
+    foto_card = (card.get("foto") or "").strip()
+    if foto_card.startswith("http") and not _RE_FOTO_LIXO.search(foto_card):
+        fotos = [foto_card]
+
     item = {
         "titulo_origem": titulo,
+        "fotos": fotos,
         "bairro": bairro,
         "logradouro": logradouro,
         "cidade": cidade,
