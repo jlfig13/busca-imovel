@@ -15,6 +15,10 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**20/08 (3):** barra de filtros recolhida atrás de botão com contador,
+chevron SVG no lugar de "▶", sparkline só com 3+ pontos e variação real.
+Cadência passou a 2x/dia (08:13 e 18:13 BRT).
+
 **20/08 (2):** custo real do CTI (visita à página do anúncio), botão
 "Observações" no topo no lugar do rodapé, e correção do "Limpar" (não zerava
 o bairro). Fotos: já eram URLs no banco desde sempre — nunca houve imagem

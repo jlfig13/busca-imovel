@@ -94,6 +94,22 @@
   dedupe usa o hash de todas elas (`resolucao.comp_fotos`), então cortar para
   uma só enfraqueceria o agrupamento sem ganho real de tamanho.
 
+### Ajustes de leitura no celular (20/08/2026)
+
+- [x] **Barra de filtros recolhida** — três chips mais seis campos comiam
+  meia tela antes do primeiro imóvel. Abre por botão, com contador de
+  filtros ativos: esconder filtro sem dizer que existe filtro faria uma
+  busca estreita parecer fonte vazia. Abre de saída quando o link já traz
+  recorte (quem abre link filtrado precisa ver o que está filtrado) e no
+  desktop, onde a barra cabe numa linha.
+- [x] **Chevron no lugar do triângulo** — "▶" chegava em tamanho e
+  alinhamento diferentes em cada aparelho (no Android às vezes como emoji
+  colorido). Agora é SVG: ">" fechado, "v" expandido.
+- [x] **Sparkline só com 3+ pontos e variação real** — com dois pontos a
+  "tendência" é uma reta ligando início e fim, que é o que o selo "Baixou
+  R$ X" já diz; solta ao lado do título, lia como risco atravessando o card.
+  Foi para o bloco de preço, onde tem a que se referir.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.

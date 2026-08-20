@@ -326,7 +326,17 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     </div>
   </section>
 
-  <div class="filtros" id="filtros">
+  <div class="barra-filtros" id="barra-filtros">
+    <button class="btn-filtros" id="btn-filtros" type="button"
+            aria-expanded="false" aria-controls="filtros">
+      {ic['filtro']} Filtros
+      <span class="filtros-n" id="filtros-n" hidden></span>
+      <span class="seta">{ic['seta']}</span>
+    </button>
+    <span class="contagem" id="contagem"></span>
+  </div>
+
+  <div class="filtros" id="filtros" hidden>
     <button class="chip" id="c-novos" type="button" aria-pressed="false">
       Novos <span class="chip-n">{novos}</span></button>
     <button class="chip" id="c-quedas" type="button" aria-pressed="false">
@@ -376,7 +386,6 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   </nav>
 
   <section id="painel-imoveis" role="tabpanel" aria-labelledby="aba-imoveis">
-    <div class="contagem" id="contagem"></div>
     <div id="lista" class="lista"></div>
   </section>
 
@@ -393,7 +402,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 <script>
 const DADOS = {json_dados};
 const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
-const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto')}, ensure_ascii=False)};
+const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto', 'seta')}, ensure_ascii=False)};
 
 /* ---------- tema ---------- */
 const raiz = document.documentElement;
@@ -425,17 +434,30 @@ const brl = v => 'R$ ' + Number(v).toLocaleString('pt-BR', {{maximumFractionDigi
 
 /* Faixa de preço: mostra a trajetória sem ocupar espaço de gráfico.
    Verde quando desceu, âmbar quando subiu -- cor só quando há movimento. */
+/* Trajetória do preço em miniatura.
+
+   Exige TRÊS pontos: com dois, a "tendência" é uma reta ligando início e
+   fim -- que é exatamente o que o selo "Baixou R$ X" já diz, só que em
+   forma de risco atravessando o card. Era o caso da maioria dos imóveis, e
+   o desenho solto ao lado do título parecia defeito de render.
+
+   Também precisa de variação real: série de preço parado vira uma linha
+   horizontal, ruído puro. */
 function faixa(hist){{
-  if (!hist || hist.length < 2) return '';
+  if (!hist) return '';
   const p = hist.map(h => h[1]).filter(v => v != null);
-  if (p.length < 2) return '';
-  const mn = Math.min(...p), mx = Math.max(...p), rg = (mx - mn) || 1;
-  const W = 56, H = 20, n = p.length;
-  const pts = p.map((v,i) => `${{(i/(n-1)*W).toFixed(1)}},${{(H-2 - (v-mn)/rg*(H-5)).toFixed(1)}}`).join(' ');
-  const cor = p[p.length-1] < p[0] ? 'var(--bom)' : (p[p.length-1] > p[0] ? 'var(--atencao)' : 'var(--tinta-fraca)');
+  if (p.length < 3) return '';
+  const mn = Math.min(...p), mx = Math.max(...p);
+  if (mx === mn) return '';
+
+  const W = 64, H = 16, n = p.length, rg = mx - mn;
+  const y = v => (H - 2 - (v - mn) / rg * (H - 4)).toFixed(1);
+  const pts = p.map((v, i) => `${{(i / (n - 1) * W).toFixed(1)}},${{y(v)}}`).join(' ');
+  const cor = p[n-1] < p[0] ? 'var(--bom)' : (p[n-1] > p[0] ? 'var(--atencao)' : 'var(--tinta-fraca)');
   return `<svg class="faixa" viewBox="0 0 ${{W}} ${{H}}" aria-hidden="true">
-    <polyline points="${{pts}}" fill="none" stroke="${{cor}}" stroke-width="1.6"
-      stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    <polyline points="${{pts}}" fill="none" stroke="${{cor}}" stroke-width="1.5"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${{W}}" cy="${{y(p[n-1])}}" r="1.8" fill="${{cor}}"/></svg>`;
 }}
 
 /* ---------- filtros ---------- */
@@ -553,6 +575,7 @@ function ficha(d){{
 
 function render(){{
   gravarUrl();
+  contarFiltros();
   const res = ordenar(filtrar());
   contagem.textContent = res.length === DADOS.length
     ? `${{res.length}} imóveis`
@@ -576,7 +599,6 @@ function render(){{
       <div class="imovel-corpo">
         <div class="imovel-cab">
           <h3 class="imovel-titulo">${{esc(d.titulo)}}</h3>
-          ${{faixa(d.historico)}}
         </div>
         <div class="imovel-local">${{IC.local}}<span>${{esc(local)}}</span>
           ${{d.logradouro
@@ -588,10 +610,11 @@ function render(){{
           <div class="preco-bloco">
             <div class="preco-val">${{esc(d.precoFmt)}}<span class="preco-un">/mês</span></div>
             ${{d.precoM2 ? `<span class="preco-m2">${{d.precoM2.toFixed(0)}} R$/m²</span>` : ''}}
+            ${{faixa(d.historico)}}
           </div>
           <div class="acoes">
             ${{varias ? `<button class="btn-ofertas" type="button" aria-expanded="false">
-                 <span class="seta">&#9654;</span> ${{d.anuncios.length}} ofertas</button>` : ''}}
+                 <span class="seta">${{IC.seta}}</span> ${{d.anuncios.length}} ofertas</button>` : ''}}
             <a class="btn-abrir" href="${{esc(d.url)}}" target="_blank" rel="noopener">
               Ver anúncio ${{IC.externo}}</a>
           </div>
@@ -646,6 +669,37 @@ el('btn-limpar').addEventListener('click', () => {{
   preencherBairros(); render();
 }});
 
+/* ---------- barra de filtros ----------
+   Recolhida por padrão: no celular os três chips mais seis campos comiam
+   meia tela antes do primeiro imóvel. O contador no botão é o que evita o
+   efeito colateral óbvio de esconder filtro -- sem ele, ninguém lembra que
+   a lista está recortada, e uma busca estreita vira "o robô não achou
+   nada". */
+const btnFiltros = el('btn-filtros'), selo = el('filtros-n');
+
+function contarFiltros(){{
+  let n = 0;
+  if (selCidade.value) n++;
+  if (selBairro.value) n++;
+  if (selQuartos.value && selQuartos.value !== '0') n++;
+  if (inpMin.value) n++;
+  if (inpMax.value) n++;
+  if (inpBusca.value.trim()) n++;
+  n += Object.values(chips).filter(
+    c => c.getAttribute('aria-pressed') === 'true').length;
+  selo.hidden = !n;
+  selo.textContent = n;
+  return n;
+}}
+
+function abrirFiltros(abrir){{
+  btnFiltros.setAttribute('aria-expanded', String(abrir));
+  filtrosEl.hidden = !abrir;
+}}
+btnFiltros.addEventListener('click', () => {{
+  abrirFiltros(btnFiltros.getAttribute('aria-expanded') !== 'true');
+}});
+
 /* ---------- observações ---------- */
 const btnObs = el('btn-obs'), painelObs = el('observacoes');
 btnObs.addEventListener('click', () => {{
@@ -665,7 +719,8 @@ function mostrarAba(nome, gravar = true){{
     paineis[k].hidden = k !== nome;
   }}
   // filtro de imóvel não filtra fonte: some junto com o catálogo
-  filtrosEl.hidden = nome !== 'imoveis';
+  el('barra-filtros').hidden = nome !== 'imoveis';
+  if (nome !== 'imoveis') abrirFiltros(false);
   if (gravar) gravarUrl();
 }}
 Object.entries(abas).forEach(([k, b]) =>
@@ -716,6 +771,10 @@ function lerUrl(){{
 }}
 
 lerUrl();
+// Aberta de saída quando o link já traz recorte -- quem abre um link
+// filtrado precisa ver O QUE está filtrado --, e no desktop, onde a barra
+// cabe numa linha e esconder não economiza nada.
+abrirFiltros(contarFiltros() > 0 || window.matchMedia('(min-width:721px)').matches);
 render();
 </script>
 </body>
