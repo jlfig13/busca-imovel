@@ -15,6 +15,10 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**20/08 (8):** galeria cheia na vitrine — busca a página do anúncio quando
+o imóvel do recorte tem menos de 5 fotos (antes era "nenhuma foto", que
+deixou de disparar quando toda fonte passou a trazer a miniatura do card).
+
 **20/08 (7):** corrigidas as fotos que não carregavam (a do card era
 descartada no acúmulo da rolagem, e "primeira img" pegava ícone). Botões
 viraram "Minhas preferências" / "Outros bairros" (complemento).

@@ -51,37 +51,51 @@ def _versao_codigo() -> str:
         return ""
 
 
+# Quantas fotos um imóvel da vitrine precisa ter para valer a visita à
+# página do anúncio. Cinco porque é o que dá para ver o apartamento sem sair
+# do dashboard -- sala, quartos, cozinha, banheiro, área.
+#
+# O critério antigo era "nenhuma foto", e ele parou de disparar quando a
+# coleta passou a trazer a miniatura do card em todas as fontes: todo imóvel
+# chegava com exatamente uma foto, o que contava como resolvido.
+MIN_FOTOS_VITRINE = 5
+
+
 def _completar_galerias(imoveis: list[dict]) -> None:
     """Busca a galeria dos imóveis exibidos e persiste no banco.
 
     Trabalha sobre os ANÚNCIOS do imóvel (é neles que a foto é gravada), e
-    para no primeiro que devolver galeria: dois portais anunciando o mesmo
-    apartamento mostram as mesmas paredes."""
+    tenta no máximo dois por imóvel: dois portais anunciando o mesmo
+    apartamento mostram as mesmas paredes, então insistir no terceiro é
+    gastar requisição para repetir cômodo."""
     pendentes = []
+    alvos = {}
     for imovel in imoveis:
-        anuncios = imovel.get("anuncios") or []
-        if any((a.get("fotos") or []) for a in anuncios):
+        if len(imovel.get("fotos") or []) >= MIN_FOTOS_VITRINE:
             continue
-        pendentes += [dict(a) for a in anuncios[:2]]
+        anuncios = [dict(a) for a in (imovel.get("anuncios") or [])[:2]]
+        for a in anuncios:
+            alvos[a["url"]] = imovel
+        pendentes += anuncios
 
     if not pendentes:
         return
 
-    galeria.enriquecer(pendentes)
+    galeria.enriquecer(pendentes, minimo=MIN_FOTOS_VITRINE)
     novas = {a["url"]: a["fotos"] for a in pendentes if a.get("fotos")}
-    if novas:
-        db.atualizar_fotos(novas)
-        # o dashboard é gerado a seguir, na mesma execução: sem isto as
-        # fotos só apareceriam na rodada seguinte
-        por_url = {a["url"]: a["fotos"] for a in pendentes if a.get("fotos")}
-        for imovel in imoveis:
-            if imovel.get("foto"):
-                continue
-            for a in imovel.get("anuncios") or []:
-                if por_url.get(a["url"]):
-                    imovel["foto"] = por_url[a["url"]][0]
-                    imovel["fotos"] = por_url[a["url"]]
-                    break
+    if not novas:
+        return
+
+    db.atualizar_fotos(novas)
+
+    # O dashboard é gerado a seguir, na mesma execução: sem isto as fotos só
+    # apareceriam na rodada seguinte. Fica a maior galeria encontrada entre
+    # os anúncios do imóvel.
+    for url, fotos in novas.items():
+        imovel = alvos.get(url)
+        if imovel and len(fotos) > len(imovel.get("fotos") or []):
+            imovel["fotos"] = fotos
+            imovel["foto"] = fotos[0]
 
 
 def rodar():

@@ -206,6 +206,17 @@
   que há de novo fora dela. Medido: 16 preferências, 38 outros, sem
   sobreposição; selo continua saindo só nas preferências.
 
+### Galeria cheia na vitrine (20/08/2026)
+
+- [x] **`MIN_FOTOS_VITRINE = 5`** — o critério para visitar a página do
+  anúncio era "imóvel sem foto nenhuma", e ele parou de disparar quando a
+  coleta passou a trazer a miniatura do card em TODAS as fontes: todo imóvel
+  chegava com exatamente uma foto, o que contava como resolvido. Cinco é o
+  que dá para ver o apartamento sem sair do dashboard.
+  Medido: média de 5,8 → 6,5 fotos por imóvel do recorte; 9 de 16 com 5+.
+  Os que continuam com uma foto são de fontes que bloqueiam requisição
+  direta (OLX, Zap, Viva Real) — ali a miniatura do card é o teto.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.
