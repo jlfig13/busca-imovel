@@ -66,7 +66,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 
 ## Estado da operação
 
-- Cron diário às 10:13 UTC (07:13 BRT) + disparo manual.
+- Cron 2x/dia: 11:13 e 21:13 UTC (08:13 e 18:13 BRT) + disparo manual.
 - 130 testes, ~3s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
