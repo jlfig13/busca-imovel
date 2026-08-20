@@ -166,6 +166,21 @@
   Primeira coleta: Recife 63 brutos → 1 aprovado (mercado caro), Olinda 38 →
   7 aprovados.
 
+### Escopo de bairros no dashboard (20/08/2026)
+
+- [x] **Botão "Meus bairros" / "Todos os bairros"** — o recorte deixou de ser
+  decisão do robô. O arquivo carrega TODOS os imóveis coletados e mostra por
+  padrão só os bairros escolhidos; um toque troca para o resto. Regerar o
+  dashboard para ver o resto significaria esperar a próxima rodada, e o
+  interesse muda com o que aparece no dia.
+  O selo ★ NÃO muda de regra: continua só nos preferidos, mesmo em "todos".
+  Pulso, contagem e contador da aba passaram a ser desenhados em JS — número
+  fixo diria "16 imóveis" numa tela mostrando 54.
+  A lista de bairros do filtro acompanha o escopo (9 opções em "meus", 23 em
+  "todos"), senão sobraria opção que não seleciona nada.
+  Galeria e planilha seguem no recorte: foto custa uma requisição por imóvel,
+  e a planilha é a lista de trabalho, não o inventário da cidade.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.
