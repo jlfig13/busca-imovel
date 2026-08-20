@@ -486,8 +486,11 @@ a{color:inherit;}
    sem a linha, o selo vira enfeite e a pessoa não sabe se concorda. */
 .porque{
   display:flex; align-items:flex-start; gap:6px;
-  font-size:12px; color:var(--ocre); line-height:1.45;
+  font-size:12px; color:var(--tinta-suave); line-height:1.45;
 }
+/* Mérito todo card pode ter ("entre os mais baratos"); a cor quente fica
+   para o que foi de fato recomendado, senão o destaque deixa de destacar. */
+.porque.destaque{color:var(--ocre);}
 .porque svg{width:12px;height:12px;fill:currentColor;stroke:none;flex-shrink:0;margin-top:2px;}
 
 .imovel-rodape{
@@ -717,8 +720,11 @@ a{color:inherit;}
    sem a linha, o selo vira enfeite e a pessoa não sabe se concorda. */
 .porque{
   display:flex; align-items:flex-start; gap:6px;
-  font-size:12px; color:var(--ocre); line-height:1.45;
+  font-size:12px; color:var(--tinta-suave); line-height:1.45;
 }
+/* Mérito todo card pode ter ("entre os mais baratos"); a cor quente fica
+   para o que foi de fato recomendado, senão o destaque deixa de destacar. */
+.porque.destaque{color:var(--ocre);}
 .porque svg{width:12px;height:12px;fill:currentColor;stroke:none;flex-shrink:0;margin-top:2px;}
 
 .imovel-rodape{padding-top:10px;}

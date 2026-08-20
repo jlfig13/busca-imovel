@@ -73,10 +73,18 @@ BAIRROS_EXIBIDOS = {
 #
 # Mexer aqui muda a recomendação, não a coleta.
 PERFIL = {
+    # O selo "Melhor achado" SÓ sai nestes bairros. Fora deles o imóvel
+    # continua na lista, com as mesmas tags de mérito ("entre os mais
+    # baratos", "melhor área pelo preço") -- o que não acontece é ser
+    # recomendado. Sem essa restrição a sugestão apontava Arruda e Bairro
+    # Novo, que são bairros exibidos mas não são onde o casal quer morar:
+    # a nota media preço e área, e barato o bastante vencia qualquer coisa.
     "bairros_preferidos": [
         "Casa Amarela", "Casa Forte", "Graças", "Espinheiro", "Aflitos",
-        "Jaqueira",
+        "Jaqueira", "Encruzilhada", "Torreão", "Rosarinho", "Campo Grande",
     ],
+    # Restringe o SELO, não a lista: ver PERFIL["bairros_preferidos"].
+    "destaque_so_em_preferidos": True,
     "quartos_min_desejado": 3,
 }
 
@@ -491,6 +499,29 @@ SITES = [
         "wait_until": "load",
         "espera_ms": 5000,
         "max_paginas": 3,
+    },
+    {
+        # A listagem já traz os dados estruturados no HTML (payload do
+        # Next.js): rua, área, quartos, banheiros, vagas, bairro, cidade,
+        # foto e aluguel. Coletor próprio em scraper_chavesnamao.py.
+        #
+        # Paginação limitada a 5 porque é o que o robots.txt libera: ele
+        # bloqueia query string ("Disallow: /*?*") e abre exatamente
+        # "?pg=2" a "?pg=5".
+        "nome": "Chaves na Mão Recife",
+        "tipo": "chavesnamao",
+        "url_listagem": "https://www.chavesnamao.com.br/apartamentos-para-alugar/pe-recife/",
+        "base_url": "https://www.chavesnamao.com.br",
+        "cidade": "Recife",
+        "max_paginas": 5,
+    },
+    {
+        "nome": "Chaves na Mão Olinda",
+        "tipo": "chavesnamao",
+        "url_listagem": "https://www.chavesnamao.com.br/apartamentos-para-alugar/pe-olinda/",
+        "base_url": "https://www.chavesnamao.com.br",
+        "cidade": "Olinda",
+        "max_paginas": 5,
     },
     {
         "nome": "OLX Imóveis",

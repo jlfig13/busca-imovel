@@ -93,7 +93,8 @@ def pontuar(imoveis: list[dict]) -> list[dict]:
 
         # --- bairro
         bairro = (i.get("bairro") or "").lower()
-        if bairro and bairro in preferidos:
+        i["preferido"] = bool(bairro and bairro in preferidos)
+        if i["preferido"]:
             criterios["bairro"] = 1.0
             motivos.append(f"bairro preferido ({i['bairro']})")
         else:
@@ -148,9 +149,26 @@ def pontuar(imoveis: list[dict]) -> list[dict]:
     # baixo: piso alto e fixo fazia o selo sumir em rodada fraca, que é
     # justamente quando a recomendação ajuda mais. O que o selo promete é
     # "melhor do que está no ar hoje", não "bom em termos absolutos".
-    media = sum(i["score"] for i in imoveis) / len(imoveis)
-    elegiveis = [i for i in imoveis
-                 if i["score"] >= max(45, media * 1.25) and i["atende"]]
+    # O selo é restrito aos bairros preferidos quando o perfil pede
+    # (`destaque_so_em_preferidos`). Sem isso a recomendação apontava Arruda
+    # e Bairro Novo: a nota media preço e área, e um imóvel barato o
+    # bastante vence qualquer coisa -- inclusive a localização, que era o
+    # ponto. Fora da lista o imóvel mantém nota e tags de mérito; o que ele
+    # não ganha é o selo.
+    exige_preferido = perfil.get("destaque_so_em_preferidos")
+    if exige_preferido:
+        # A restrição de bairro JÁ é o corte de qualidade: dentro da lista
+        # curta, os melhores do dia são o que se quer ver, mesmo numa rodada
+        # fraca. Somar um piso de nota aqui deixava o selo sumir -- medido,
+        # os melhores em bairro preferido marcavam 40 e 34 contra um piso de
+        # 45, e a tela ficava sem nenhuma sugestão.
+        elegiveis = [i for i in imoveis if i["preferido"] and i["atende"]]
+    else:
+        # Sem restrição de bairro, o piso volta a ser necessário: senão o
+        # selo iria para o "menos pior" de uma lista ruim.
+        media = sum(i["score"] for i in imoveis) / len(imoveis)
+        elegiveis = [i for i in imoveis
+                     if i["score"] >= max(45, media * 1.25) and i["atende"]]
     for i in sorted(elegiveis, key=lambda x: -x["score"])[:DESTAQUES]:
         i["melhor"] = True
 
