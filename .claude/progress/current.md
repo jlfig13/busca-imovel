@@ -15,6 +15,10 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**20/08 (7):** corrigidas as fotos que não carregavam (a do card era
+descartada no acúmulo da rolagem, e "primeira img" pegava ícone). Botões
+viraram "Minhas preferências" / "Outros bairros" (complemento).
+
 **20/08 (6):** botão "Meus bairros / Todos os bairros" no dashboard — o
 arquivo leva os 54 imóveis coletados e mostra 16 por padrão. Selo ★ segue
 restrito aos preferidos.

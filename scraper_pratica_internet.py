@@ -13,6 +13,7 @@ import re
 from urllib.parse import urljoin, urlparse, parse_qs
 from bs4 import BeautifulSoup
 
+import galeria
 import utils
 from utils import log
 
@@ -54,6 +55,10 @@ def extrair_detalhes(html: str, url: str) -> dict | None:
     quartos = utils.parse_quartos(texto_completo)
     area = utils.parse_area(texto_completo)
 
+    # A página do anúncio já está em mãos: a galeria sai daqui sem custo de
+    # rede nenhum. Estas fontes chegavam ao dashboard sem foto alguma.
+    fotos = galeria.coletar(html, url)
+
     # Bairro
     bairro = None
     match_bairro = re.search(r"Bairro:\**\s*([^\n]+)", texto_completo)
@@ -70,6 +75,7 @@ def extrair_detalhes(html: str, url: str) -> dict | None:
         "preco": preco,
         "quartos": quartos,
         "area_m2": area,
+        "fotos": fotos,
         "url": url,
     }
 

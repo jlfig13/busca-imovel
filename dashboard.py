@@ -244,7 +244,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
             "<div><dt>Coletados e não exibidos</dt><dd>"
             f"{' · '.join(partes)}. A coleta cobre a cidade inteira; a lista "
             "de bairros acima é só o recorte da exibição — o botão "
-            "<b>Todos os bairros</b>, no topo, mostra o resto.</dd></div>"
+            "<b>Outros bairros</b>, no topo, mostra o que ficou de fora.</dd></div>"
         )
 
     html_final = f"""<!DOCTYPE html>
@@ -310,11 +310,11 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
        e um pulso fixo diria "19 imóveis" numa tela mostrando 45. -->
   <section class="pulso" id="pulso" aria-label="Resumo da busca"></section>
 
-  <div class="escopo" role="group" aria-label="Bairros exibidos">
+  <div class="escopo" role="group" aria-label="Recorte de bairros">
     <button class="chip-escopo" id="e-meus" type="button" aria-pressed="true">
-      Meus bairros <span class="chip-n" id="n-meus"></span></button>
-    <button class="chip-escopo" id="e-todos" type="button" aria-pressed="false">
-      Todos os bairros <span class="chip-n" id="n-todos"></span></button>
+      Minhas preferências <span class="chip-n" id="n-meus"></span></button>
+    <button class="chip-escopo" id="e-outros" type="button" aria-pressed="false">
+      Outros bairros <span class="chip-n" id="n-outros"></span></button>
   </div>
 
   <div class="barra-filtros" id="barra-filtros">
@@ -452,15 +452,20 @@ function faixa(hist){{
     <circle cx="${{W}}" cy="${{y(p[n-1])}}" r="1.8" fill="${{cor}}"/></svg>`;
 }}
 
-/* ---------- escopo de bairros ----------
-   O recorte de bairros é do usuário, não do robô: a coleta cobre a cidade
-   inteira e o arquivo carrega TUDO. Trocar de escopo aqui é instantâneo --
-   regerar o dashboard para ver o resto significaria esperar a próxima
-   rodada. O selo de sugestão não muda: continua só nos preferidos. */
+/* ---------- recorte de bairros ----------
+   Os dois lados são EXCLUSIVOS: "Minhas preferências" mostra o que está no
+   filtro de bairros e "Outros bairros" mostra o complemento -- o que ficou
+   de fora, e só isso. Um botão "todos" (preferências + resto) obrigaria a
+   procurar os conhecidos no meio da lista inteira para descobrir o que há
+   de novo fora dela, que é justamente a pergunta que ele deveria responder.
+
+   O recorte é do usuário, não do robô: a coleta cobre a cidade inteira e o
+   arquivo carrega tudo, então trocar de lado é instantâneo. O selo de
+   sugestão não muda -- continua só nos bairros preferidos. */
 const el = id => document.getElementById(id);
 let escopo = 'meus';
 
-function noEscopo(d){{ return escopo === 'todos' || d.noRecorte; }}
+function noEscopo(d){{ return escopo === 'outros' ? !d.noRecorte : d.noRecorte; }}
 
 /* ---------- filtros ---------- */
 const selCidade = el('f-cidade'), selBairro = el('f-bairro'), selQuartos = el('f-quartos');
@@ -567,14 +572,14 @@ function pintarPulso(){{
     item('Faixa', faixa);
 }}
 
-const btnMeus = el('e-meus'), btnTodos = el('e-todos');
+const btnMeus = el('e-meus'), btnOutros = el('e-outros');
 el('n-meus').textContent = DADOS.filter(d => d.noRecorte).length;
-el('n-todos').textContent = DADOS.length;
+el('n-outros').textContent = DADOS.filter(d => !d.noRecorte).length;
 
 function trocarEscopo(novo){{
   escopo = novo;
   btnMeus.setAttribute('aria-pressed', String(novo === 'meus'));
-  btnTodos.setAttribute('aria-pressed', String(novo === 'todos'));
+  btnOutros.setAttribute('aria-pressed', String(novo === 'outros'));
   // a lista de bairros do filtro acompanha o escopo, senão sobra opção que
   // não seleciona nada
   preencherBairros();
@@ -582,7 +587,7 @@ function trocarEscopo(novo){{
   render();
 }}
 btnMeus.addEventListener('click', () => trocarEscopo('meus'));
-btnTodos.addEventListener('click', () => trocarEscopo('todos'));
+btnOutros.addEventListener('click', () => trocarEscopo('outros'));
 
 /* ---------- render ---------- */
 const lista = el('lista'), contagem = el('contagem');
@@ -843,7 +848,7 @@ function gravarUrl(){{
   const marcados = Object.entries(chips)
     .filter(([, c]) => c.getAttribute('aria-pressed') === 'true').map(([k]) => k);
   if (marcados.length) p.set('sinais', marcados.join(','));
-  if (escopo === 'todos') p.set('escopo', 'todos');
+  if (escopo === 'outros') p.set('escopo', 'outros');
   if (abas.fontes.getAttribute('aria-selected') === 'true') p.set('aba', 'fontes');
   const s = p.toString();
   // Abrir por duplo clique (file://) ou de um data: URL dá origem nula, e aí
@@ -858,10 +863,10 @@ function gravarUrl(){{
 function lerUrl(){{
   const p = new URLSearchParams(location.search);
   // escopo antes de tudo: ele define quais bairros existem para escolher
-  if (p.get('escopo') === 'todos'){{
-    escopo = 'todos';
+  if (p.get('escopo') === 'outros'){{
+    escopo = 'outros';
     btnMeus.setAttribute('aria-pressed', 'false');
-    btnTodos.setAttribute('aria-pressed', 'true');
+    btnOutros.setAttribute('aria-pressed', 'true');
   }}
   // cidade primeiro: a lista de bairros depende dela
   if (p.has('cidade')) selCidade.value = p.get('cidade');

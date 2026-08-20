@@ -155,3 +155,43 @@ def test_galeria_nao_visita_quem_ja_tem_fotos():
     itens = [{"url": "https://x/1", "fotos": ["a", "b", "c"]}]
     galeria.enriquecer(itens, buscar=lambda u: visitas.append(u) or PAGINA_GALERIA)
     assert visitas == []
+
+
+# ---------------------------------------------------------------------------
+# foto do card na listagem
+# ---------------------------------------------------------------------------
+from bs4 import BeautifulSoup
+
+
+def _link(html):
+    return BeautifulSoup(html, "html.parser").find("a")
+
+
+def test_foto_do_card_ignora_o_icone_de_favorito():
+    """No CTI a primeira <img> do card é o ícone de favorito.
+
+    Pegar "a primeira imagem" deixava TODO card da fonte sem foto."""
+    card = """<div><a href="/imovel/x">
+        <img src="https://site.com/assets/icons/icon-favorito.svg">
+        <img src="https://cdn.site.com/Imoveis/116/sala.jpg">
+    </a></div>"""
+    assert galeria.foto_de_card(_link(card)) == "https://cdn.site.com/Imoveis/116/sala.jpg"
+
+
+def test_foto_do_card_em_background_image():
+    """A Âncora não usa <img>: a foto está no style do bloco."""
+    card = """<div><div style="background-image: url('https://cdn.site.com/ancora/4504/foto.jpg')">
+        <a href="/imovel/x">Apartamento</a></div></div>"""
+    assert galeria.foto_de_card(_link(card)) == "https://cdn.site.com/ancora/4504/foto.jpg"
+
+
+def test_foto_do_card_em_atributo_data():
+    """O Portal CRECI guarda a foto num data-info com JSON dentro."""
+    card = ("""<div data-info='{ "Id": "1", "Imagem": "/file_storage/61/c2/foto.jpg?width=468" }'>"""
+            """<a href="/Anuncio/Index/x">Apartamento</a></div>""")
+    achada = galeria.foto_de_card(_link(card), "https://www.portalcreci.org.br")
+    assert achada == "https://www.portalcreci.org.br/file_storage/61/c2/foto.jpg?width=468"
+
+
+def test_foto_do_card_sem_imagem_nenhuma():
+    assert galeria.foto_de_card(_link("<div><a href='/imovel/x'>só texto</a></div>")) is None

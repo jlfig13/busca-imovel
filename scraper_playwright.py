@@ -44,8 +44,8 @@ _RE_OLX_NUMEROS = re.compile(
 # Imagem de interface que aparece dentro do card (selo do portal, ícone de
 # favorito, bandeira de "destaque") -- não é foto do imóvel.
 _RE_FOTO_LIXO = re.compile(
-    r"(logo|icone|icon|sprite|avatar|placeholder|whatsapp|banner|selo"
-    r"|marca|flag|blank|spacer)",
+    r"(logo|icone?|sprite|avatar|placeholder|whats|banner|selo|favorit"
+    r"|marca|flag|blank|spacer|\.svg)",
     re.IGNORECASE,
 )
 
@@ -70,7 +70,9 @@ def _extrair_cards(page_obj, seletor_href: str) -> list[dict]:
     descrição + preço/quartos/área -- todo card do Imovelweb ficava sem
     dado nenhum. Confirmado medindo o tamanho real de cada nível no DOM
     ao vivo."""
-    js = """(els, seletor) => {
+    # raw string: o JS abaixo usa \. e \? nos regex, que o Python leria
+    # como escapes inválidos
+    js = r"""(els, seletor) => {
         const MAX_SUBIDA = 6;
         const MAX_LEN = 4000;
         const MAX_EXTRA = 600;
@@ -130,17 +132,28 @@ def _extrair_cards(page_obj, seletor_href: str) -> list[dict]:
             // imagem já está no DOM que o Playwright abriu -- custo zero.
             // srcset vem como "url 320w, url 640w": fica a última, que é a
             // maior.
-            let foto = null;
+            // Foto do card: a MAIOR imagem de verdade dentro dele.
+            //
+            // Pegar a primeira <img> não serve: no CTI a primeira é o
+            // ícone de favorito (assets/icons/icon-favorito.svg), e todo
+            // card chegava ao dashboard "sem foto". Ícone é pequeno e
+            // costuma ser SVG; foto de imóvel é raster e grande -- por isso
+            // o critério é tipo de arquivo mais área renderizada.
+            const LIXO = /(logo|icone?|sprite|avatar|placeholder|whats|banner|selo|favorit|marca|flag|blank|spacer)/i;
+            let foto = null, melhorArea = 0;
             for (const img of el.querySelectorAll("img")) {
-                const bruto = img.getAttribute("srcset");
+                const bruto = img.getAttribute("srcset") ||
+                              img.getAttribute("data-srcset");
                 const cand = bruto
                     ? bruto.split(",").pop().trim().split(" ")[0]
                     : (img.currentSrc || img.src ||
-                       img.getAttribute("data-src") || "");
-                if (cand && cand.startsWith("http") && !cand.includes("data:")) {
-                    foto = cand;
-                    break;
-                }
+                       img.getAttribute("data-src") ||
+                       img.getAttribute("data-lazy") || "");
+                if (!cand || !cand.startsWith("http") || LIXO.test(cand)) continue;
+                if (/\.svg(\?|$)/i.test(cand)) continue;
+                const area = (img.naturalWidth || img.width || 0) *
+                             (img.naturalHeight || img.height || 0);
+                if (area >= melhorArea) { melhorArea = area; foto = cand; }
             }
             return {href, text: melhorTexto, foto};
         }).filter(Boolean);
@@ -164,12 +177,23 @@ def _coletar_rolando(page_obj, seletor_href: str, passo: int = 700,
     e virtualização com descarte. Fica com o texto mais completo já visto
     para cada href, então um card que aparece parcialmente num passo não
     sobrescreve a versão boa de outro."""
-    acumulado: dict[str, str] = {}
+    # Guarda texto E foto por href. A primeira versão acumulava só o texto e
+    # remontava o card no fim -- a foto que _extrair_cards colhia era jogada
+    # fora aqui, em silêncio, e o CTI (que traz 9 imagens dentro do próprio
+    # link do card) chegava ao dashboard sem nenhuma.
+    acumulado: dict[str, dict] = {}
     for _ in range(max_passos):
         for c in _extrair_cards(page_obj, seletor_href):
             href, texto = c.get("href", ""), c.get("text", "")
-            if href and len(texto) > len(acumulado.get(href, "")):
-                acumulado[href] = texto
+            if not href:
+                continue
+            atual = acumulado.setdefault(href, {"text": "", "foto": None})
+            if len(texto) > len(atual["text"]):
+                atual["text"] = texto
+            # a foto aparece quando o card entra na viewport: fica a
+            # primeira que vier, e passos seguintes não a apagam
+            if not atual["foto"] and c.get("foto"):
+                atual["foto"] = c["foto"]
         try:
             fim = page_obj.evaluate(
                 "() => window.innerHeight + window.scrollY >= document.body.scrollHeight - 40"
@@ -180,7 +204,7 @@ def _coletar_rolando(page_obj, seletor_href: str, passo: int = 700,
             page_obj.wait_for_timeout(220)
         except Exception:
             break  # rolagem é otimização; falhar aqui não perde o que já veio
-    return [{"href": h, "text": t} for h, t in acumulado.items()]
+    return [{"href": h, **dados} for h, dados in acumulado.items()]
 
 
 def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> dict | None:
