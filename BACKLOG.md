@@ -181,6 +181,31 @@
   Galeria e planilha seguem no recorte: foto custa uma requisição por imóvel,
   e a planilha é a lista de trabalho, não o inventário da cidade.
 
+### Fotos que não carregavam e recorte por complemento (20/08/2026)
+
+- [x] **Foto do card era jogada fora** — `_coletar_rolando` acumulava só o
+  texto por href e remontava o card no fim, descartando em silêncio a foto
+  que `_extrair_cards` tinha colhido. O CTI, que traz 9 imagens dentro do
+  próprio link, chegava ao dashboard com zero.
+- [x] **"Primeira `<img>`" era o ícone de favorito** — no CTI a primeira
+  imagem do card é `assets/icons/icon-favorito.svg`. Agora o critério é a
+  MAIOR imagem raster do card (ícone é pequeno e costuma ser SVG).
+- [x] **Fontes sem `<img>` no card** — a Âncora usa `background-image` no
+  style inline e o Portal CRECI esconde a foto num `data-info` com JSON
+  dentro. `galeria.foto_de_card` procura nos três lugares, subindo até 4
+  níveis (no quinto já se alcança a lista e a foto seria a do card vizinho).
+- [x] **`cards_inline` e `html_estatico` passaram a capturar foto** — antes
+  só o coletor Playwright fazia isso. No `pratica_internet` a página do
+  anúncio já está baixada, então sai a galeria inteira sem custo de rede.
+  Medição depois da correção: CTI 17/17, OLX 40/42, REMAX 21/21,
+  Âncora 2/3, CRECI 2/2, Camila Melo 6 fotos por imóvel.
+- [x] **Recorte virou complemento** — os botões passaram a ser "Minhas
+  preferências" e "Outros bairros", e o segundo mostra o COMPLEMENTO (o que
+  ficou de fora do filtro), não o conjunto todo. Um botão "todos" obrigaria
+  a procurar os bairros conhecidos no meio da lista inteira para descobrir o
+  que há de novo fora dela. Medido: 16 preferências, 38 outros, sem
+  sobreposição; selo continua saindo só nas preferências.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.

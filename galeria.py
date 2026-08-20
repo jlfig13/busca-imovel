@@ -103,6 +103,53 @@ def coletar(html: str, url_pagina: str = "", limite: int = MAX_FOTOS) -> list[st
     return fotos[:limite]
 
 
+# Card sem <img>: a Âncora põe a foto em background-image no style inline, e
+# o Portal CRECI a esconde num atributo data-info='{"Imagem": "/file_..."}'.
+# Sem ler esses dois esconderijos, as duas fontes chegavam ao dashboard sem
+# imagem nenhuma, embora a foto estivesse no HTML que já tínhamos baixado.
+_RE_BG = re.compile(r"background-image:\s*url\(\s*['\"]?([^)'\"]+)", re.I)
+_RE_CAMINHO_IMG = re.compile(
+    r"""["']((?:https?:)?/[^"']{5,300}?\.(?:jpe?g|png|webp|avif)[^"']{0,90})["']""",
+    re.I,
+)
+
+
+def foto_de_card(tag, base: str = "", subidas: int = 4) -> str | None:
+    """Foto de um card da listagem, subindo a partir do link do anúncio.
+
+    Sobe nível a nível e devolve o primeiro achado, nesta ordem: <img>,
+    background-image, caminho de imagem em atributo. Subir pouco é de
+    propósito -- alguns níveis acima está a LISTA, e ali a "primeira foto"
+    seria a do card vizinho. Quatro níveis porque é onde mora a foto do
+    Portal CRECI (medido); no quinto já se alcança a lista inteira.
+    """
+    no = tag
+    for _ in range(subidas + 1):
+        if no is None or not hasattr(no, "find_all"):
+            break
+
+        for img in no.find_all("img"):
+            bruto = img.get("srcset") or img.get("data-srcset") or ""
+            cand = (bruto or img.get("src") or img.get("data-src")
+                    or img.get("data-lazy") or "")
+            limpa = _limpar(cand, base)
+            if limpa:
+                return limpa
+
+        bloco = str(no)
+        for m in _RE_BG.finditer(bloco):
+            limpa = _limpar(m.group(1), base)
+            if limpa:
+                return limpa
+        for m in _RE_CAMINHO_IMG.finditer(bloco):
+            limpa = _limpar(m.group(1).replace("&amp;", "&"), base)
+            if limpa:
+                return limpa
+
+        no = getattr(no, "parent", None)
+    return None
+
+
 # Portais com proteção anti-bot (OLX, Viva Real, Zap) devolvem 403 para
 # requisição direta. Depois de tantas falhas seguidas no mesmo host, o
 # resultado das próximas é conhecido -- e cada tentativa ainda custa os

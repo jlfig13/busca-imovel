@@ -19,6 +19,7 @@ import re
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
+import galeria
 import utils
 from utils import log
 
@@ -57,6 +58,9 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
 
         bloco = _achar_bloco_do_card(a)
         titulo = a.get_text(strip=True) or bloco[:80]
+        # Foto do card: sai de graça do HTML que já baixamos. Sem isto, a
+        # fonte só teria imagem se a página do anúncio entregasse galeria.
+        foto = galeria.foto_de_card(a, site["base_url"])
 
         if not utils.titulo_aceito(titulo):
             continue
@@ -102,6 +106,7 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
             # titulo definitivo é gerado abaixo, a partir dos campos
             # normalizados; o raspado vira titulo_origem (P-06)
             "titulo_origem": titulo,
+            "fotos": [foto] if foto else [],
             "bairro": bairro,
             "logradouro": logradouro,
             "idade_dias": idade,
