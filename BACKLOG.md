@@ -139,6 +139,33 @@
   marcava 38 contra 16 de um 3 quartos caro. Virou chave de ordenação
   (`atende`), não só desconto.
 
+### Chaves na Mão e sugestão restrita (20/08/2026)
+
+- [x] **Selo restrito aos bairros escolhidos** — a primeira versão sugeriu
+  Arruda e Bairro Novo, que estão na lista mas não são onde se quer morar:
+  a nota media preço, área e localização, e barato o bastante vencia a
+  localização. Fora dos preferidos o imóvel mantém nota e tags de mérito,
+  só não ganha selo. O piso de nota saiu quando a restrição está ligada —
+  os dois juntos deixavam a tela sem sugestão nenhuma (melhores em bairro
+  preferido marcavam 40 e 34 contra piso de 45).
+- [x] **Chaves na Mão (Recife e Olinda)** — `scraper_chavesnamao.py`. A
+  listagem embute os dados estruturados no HTML (payload do Next.js): rua,
+  área, quartos, banheiros, vagas, bairro, cidade, foto e aluguel. É o
+  coletor mais confiável do projeto: nada é adivinhado do texto do card.
+  `price` é só o ALUGUEL. Condomínio e IPTU existem apenas na página do
+  imóvel, renderizada por JS — daí a segunda visita com Playwright, só para
+  quem ainda cabe no teto de R$ 2.500 só de aluguel.
+  **Armadilha:** a página escreve "Aluguel + Condomínio R$ X", e esse rótulo
+  contém a palavra "Condomínio". O `utils.decompor_custo` genérico lia o
+  total como se fosse a taxa e somava de novo — um apartamento de R$ 1.800
+  saiu como R$ 3.601. Leitor próprio (`_custo_do_texto`), que também trata
+  "R$ -" e "R$ --" como ausência, não como zero.
+  Paginação para em 5 porque é o que o robots.txt libera: bloqueia query
+  string e abre exatamente `?pg=2` a `?pg=5`. robots consultado: PERMITIDO
+  para o nosso agente (os `Disallow: /` são para bots de IA nomeados).
+  Primeira coleta: Recife 63 brutos → 1 aprovado (mercado caro), Olinda 38 →
+  7 aprovados.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.
