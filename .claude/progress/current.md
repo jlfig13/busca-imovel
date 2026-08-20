@@ -1,6 +1,6 @@
 # Estado Atual
 
-**Atualizado em:** 2026-08-19
+**Atualizado em:** 2026-08-20
 **Branch:** `main` (limpa, sem PR aberto)
 **No ar:** https://jlfig13.github.io/busca-imovel/
 
@@ -13,6 +13,17 @@
 | [#3](https://github.com/jlfig13/busca-imovel/pull/3) | Catálogo em cards + dashboard responsivo (Poco X6 Pro / iPhone 11) |
 | [#4](https://github.com/jlfig13/busca-imovel/pull/4) | Cron 07:00 → 07:13 BRT, fora da hora cheia |
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
+| [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
+
+**20/08 (2):** custo real do CTI (visita à página do anúncio), botão
+"Observações" no topo no lugar do rodapé, e correção do "Limpar" (não zerava
+o bairro). Fotos: já eram URLs no banco desde sempre — nunca houve imagem
+salva, são 50 KB de texto em 676 KB de banco.
+
+**20/08:** preço passou a 0–2.500 e entrou o recorte de bairros na
+apresentação (`config.BAIRROS_EXIBIDOS`). A coleta segue cobrindo a cidade
+inteira; só a exibição é restrita. Medido no banco do dia: 19 de 49 imóveis
+ficam visíveis (26 em outros bairros, 4 sem bairro informado).
 
 Detalhe e racional de cada um: [BACKLOG.md](../../BACKLOG.md), seção
 "Fase 4".
@@ -55,7 +66,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 
 ## Estado da operação
 
-- Cron diário às 10:13 UTC (07:13 BRT) + disparo manual.
+- Cron 2x/dia: 11:13 e 21:13 UTC (08:13 e 18:13 BRT) + disparo manual.
 - 130 testes, ~3s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).

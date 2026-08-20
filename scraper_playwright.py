@@ -11,6 +11,7 @@ import time
 from urllib.parse import urljoin
 
 import extracao_jsonld
+import detalhe_custo
 import utils
 from utils import log
 
@@ -375,6 +376,14 @@ def scrape(site: dict) -> list[dict]:
                 indice = extracao_jsonld.indexar_por_url(page.content())
                 if indice:
                     extracao_jsonld.enriquecer(candidatos, indice)
+
+                # Fonte que só mostra o aluguel no card (CTI) precisa da
+                # página do anúncio para o custo real -- sem isso um imóvel
+                # de R$ 2.997 entra como R$ 1.850 e ocupa a lista fingindo
+                # caber no orçamento. Também vai ANTES do filtro: é
+                # justamente o veredito que muda.
+                if site.get("custo_no_detalhe"):
+                    detalhe_custo.enriquecer(candidatos)
 
                 for item in candidatos:
                     veredito, motivos = utils.avaliar_filtro(

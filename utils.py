@@ -186,6 +186,11 @@ BAIRROS_CANONICOS = {
     "recife-antigo": "Recife Antigo", "sao-jose": "São José",
     "poco-da-panela": "Poço da Panela", "monteiro": "Monteiro",
     "apipucos": "Apipucos", "dois-irmaos": "Dois Irmãos",
+    "paissandu": "Paissandu", "hipodromo": "Hipódromo", "torreao": "Torreão",
+    "jaqueira": "Jaqueira", "santana": "Santana",
+    # "Bairro do Recife" é o nome oficial do que os portais anunciam como
+    # "Recife Antigo"; as duas grafias apontam para o mesmo lugar
+    "bairro-do-recife": "Recife Antigo",
     # Olinda
     "casa-caiada": "Casa Caiada", "bairro-novo": "Bairro Novo",
     "jardim-atlantico": "Jardim Atlântico", "rio-doce": "Rio Doce",
@@ -212,6 +217,30 @@ for _slug in ("casa-caiada", "bairro-novo", "jardim-atlantico", "rio-doce",
 for _slug in ("piedade", "candeias", "barra-de-jangada", "prazeres",
               "cajueiro-seco", "curado-ii", "socorro"):
     CIDADE_DO_BAIRRO[_slug] = "Jaboatão dos Guararapes"
+
+
+def slug_bairro(bairro: str) -> str:
+    """Forma comparável de um nome de bairro: sem acento, caixa nem pontuação."""
+    if not bairro:
+        return ""
+    return re.sub(r"[^a-z0-9]+", "-", _sem_acento(str(bairro)).lower()).strip("-")
+
+
+def bairro_exibivel(cidade: str | None, bairro: str | None) -> bool:
+    """Diz se o imóvel entra na apresentação (dashboard e planilha).
+
+    A coleta não usa isto: o banco continua guardando a cidade inteira, para
+    o histórico de preço não recomeçar do zero toda vez que a lista de
+    bairros muda.
+
+    Sem bairro devolve False de propósito -- "não sei onde fica" não é o
+    mesmo que "fica num bairro escolhido", e deixar passar encheria a lista
+    justamente com o anúncio de endereço mais vago."""
+    permitidos = config.BAIRROS_EXIBIDOS.get((cidade or "").strip())
+    if not permitidos:
+        return False
+    alvo = slug_bairro(bairro)
+    return bool(alvo) and alvo in {slug_bairro(b) for b in permitidos}
 
 
 def cidade_do_bairro(bairro: str) -> str | None:

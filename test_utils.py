@@ -259,7 +259,11 @@ def test_bairro_do_slug_ignora_o_que_nao_e_bairro():
 
 
 def test_bairro_do_slug_nao_casa_no_meio_de_palavra():
-    assert utils.bairro_do_slug("/imovel/apto-no-torreao-grande") is None
+    # "torre" é bairro; "torrelandia" não é. Sem a exigência de separador
+    # nas bordas, o pedaço casaria e gravaria bairro errado (P-05).
+    assert utils.bairro_do_slug("/imovel/apto-na-torrelandia-2") is None
+    # já "torreao" é bairro de verdade e vem separado por hífen: casa
+    assert utils.bairro_do_slug("/imovel/apto-no-torreao-grande") == "Torreão"
 
 
 # ---------------------------------------------------------------------------
@@ -395,3 +399,43 @@ def test_robots_detecta_html_como_ausencia():
     # isso não é um robots.txt
     import robots
     assert robots._dominio("https://x.com.br/a/b") == "https://x.com.br"
+
+
+# ---------------------------------------------------------------------------
+# Recorte de bairros na apresentação
+# ---------------------------------------------------------------------------
+
+def test_bairro_exibivel_respeita_a_cidade():
+    """O mesmo nome só vale na cidade certa: Bairro Novo é de Olinda."""
+    assert utils.bairro_exibivel("Recife", "Espinheiro") is True
+    assert utils.bairro_exibivel("Olinda", "Casa Caiada") is True
+    # Boa Viagem é coletado, mas está fora do recorte pedido
+    assert utils.bairro_exibivel("Recife", "Boa Viagem") is False
+    assert utils.bairro_exibivel("Olinda", "Rio Doce") is False
+
+
+def test_bairro_exibivel_compara_sem_acento_nem_caixa():
+    # a fonte escreve como quiser: "hipodromo", "HIPÓDROMO", "Hipódromo"
+    assert utils.bairro_exibivel("Recife", "hipodromo") is True
+    assert utils.bairro_exibivel("Recife", "GRAÇAS") is True
+    assert utils.bairro_exibivel("Recife", "poco da panela") is True
+
+
+def test_bairro_exibivel_recusa_o_que_nao_da_para_confirmar():
+    """Sem bairro, ou em cidade fora da lista, não entra na apresentação.
+
+    "Não sei onde fica" não é o mesmo que "fica num bairro escolhido" --
+    deixar passar encheria a lista com o anúncio de endereço mais vago."""
+    assert utils.bairro_exibivel("Recife", None) is False
+    assert utils.bairro_exibivel("Recife", "") is False
+    assert utils.bairro_exibivel("Jaboatão dos Guararapes", "Piedade") is False
+    assert utils.bairro_exibivel(None, "Espinheiro") is False
+
+
+def test_piso_zero_nao_vai_para_a_url_de_busca():
+    """ps=0 é um piso literal, não "sem piso": some da URL quando é zero."""
+    import config
+    olx = next(s for s in config.SITES if s["nome"] == "OLX Imóveis")
+    if not config.FILTROS["preco_min"]:
+        assert "ps=" not in olx["url_listagem"]
+    assert f"pe={config.FILTROS['preco_max']}" in olx["url_listagem"]

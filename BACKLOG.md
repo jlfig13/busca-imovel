@@ -51,6 +51,49 @@
 - [x] **REMAX reativado** — rota nova `/listings?...&TransactionTypeUID=260`.
   Na primeira rodada: 64 coletados, 4 no filtro, 1 imóvel exclusivo.
 
+### Parâmetros de busca (20/08/2026)
+
+- [x] **Preço 0–2.500** — o piso de 1.500 escondia oportunidade real; quem
+  julga anúncio barato demais é o olho, no dashboard. `ps=0` NÃO vai para a
+  URL do OLX: zero ali é piso literal, e portal que o trata como valor
+  válido pode devolver busca vazia — sem o parâmetro, a listagem
+  simplesmente não tem piso.
+- [x] **Recorte de bairros na apresentação** (`config.BAIRROS_EXIBIDOS`) —
+  25 bairros em Recife, 2 em Olinda (Casa Caiada, Bairro Novo). A COLETA
+  segue cobrindo a cidade inteira: filtrar na coleta faria o histórico de um
+  imóvel recomeçar do zero toda vez que a lista mudasse, e o dedupe entre
+  portais perderia o par que mora fora do recorte.
+  Imóvel sem bairro não é exibido — "não sei onde fica" não é o mesmo que
+  "fica num bairro escolhido". O rodapé mostra quantos ficaram de fora, por
+  motivo: filtro silencioso é indistinguível de fonte quebrada.
+  Primeira medição: 19 de 49 imóveis visíveis (26 fora, 4 sem bairro).
+- [x] **Gazetteer completado** — Paissandu, Hipódromo, Torreão, Jaqueira,
+  Santana e "Bairro do Recife" (mesma coisa que Recife Antigo) faltavam em
+  `BAIRROS_CANONICOS`; sem eles o imóvel chegaria sem bairro e sumiria da
+  apresentação justamente nos bairros pedidos.
+
+### Custo real e UI (20/08/2026)
+
+- [x] **Custo no detalhe** (`detalhe_custo.py`) — a CTI mostra "R$ 1.850" no
+  card e só na página do imóvel revela condomínio de R$ 953 e IPTU de R$ 194:
+  **R$ 2.997 reais**. O anúncio entrava no dashboard fingindo caber no teto —
+  não é um imóvel a menos, é um imóvel errado ocupando a lista.
+  Opt-in por fonte (`"custo_no_detalhe": True`), com dois cortes para não
+  virar varredura: não visita quem já tem custo completo nem quem já estourou
+  o teto (somar encargos só aumenta). Teto de 40 visitas por rodada.
+  Verificado contra a página real: 1.850 → 2.997, veredito REPROVADO.
+- [x] **Botão "Observações" no topo** — filtros, bairros e contagem de
+  ocultos saíram do rodapé. No celular, rodapé significa rolar a lista
+  inteira para descobrir por que um imóvel não aparece; ou seja, ninguém lia.
+- [x] **"Limpar" não limpava o bairro** — `preencherBairros()` preserva a
+  seleção quando ela ainda existe entre as opções, então o filtro de bairro
+  ficava de pé e a tela seguia mostrando poucos imóveis, com cara de botão
+  quebrado.
+- [x] **Fotos: nada a fazer** — já são URLs no banco (campo `fotos`, JSON),
+  nunca imagem salva. 5 URLs por anúncio, 50 KB no total = 7,4% do banco. O
+  dedupe usa o hash de todas elas (`resolucao.comp_fotos`), então cortar para
+  uma só enfraqueceria o agrupamento sem ganho real de tamanho.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.

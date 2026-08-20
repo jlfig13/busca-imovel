@@ -153,7 +153,8 @@ def _painel_rendimento(rendimento: list[dict] | None) -> str:
 
 
 def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
-                    rendimento: list[dict] | None = None) -> str:
+                    rendimento: list[dict] | None = None,
+                    ocultos: dict | None = None) -> str:
     """Monta o dashboard a partir dos IMÓVEIS consolidados (não anúncios)."""
 
     urls = [u for i in itens for u in (i.get("urls") or [i.get("url", "")])]
@@ -217,6 +218,26 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
         f"{c} {p['quartos_min']}+ qtos, {p['area_min']}m²+"
         for c, p in config.FILTROS_POR_CIDADE.items()
     )
+    bairros = " · ".join(
+        f"<b>{html.escape(c)}</b>: " + ", ".join(html.escape(b) for b in bs)
+        for c, bs in config.BAIRROS_EXIBIDOS.items()
+    )
+    # Contagem do que o recorte de bairro escondeu. Aparece porque filtro
+    # silencioso é indistinguível de fonte quebrada: sem a linha, uma rodada
+    # ruim e uma lista de bairros estreita demais têm exatamente a mesma
+    # cara -- poucos imóveis e nenhuma explicação.
+    linha_ocultos = ""
+    if ocultos and (ocultos.get("fora") or ocultos.get("sem_bairro")):
+        partes = []
+        if ocultos.get("fora"):
+            partes.append(f"{ocultos['fora']} em outros bairros")
+        if ocultos.get("sem_bairro"):
+            partes.append(f"{ocultos['sem_bairro']} sem bairro informado")
+        linha_ocultos = (
+            "<div><dt>Coletados e não exibidos</dt><dd>"
+            f"{' · '.join(partes)}. A coleta cobre a cidade inteira; a lista "
+            "de bairros acima é só o recorte da exibição.</dd></div>"
+        )
 
     html_final = f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -244,6 +265,10 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
       <span class="marca-sub">{hoje}</span>
     </div>
     <div class="topo-dir">
+      <button class="btn-obs" id="btn-obs" type="button" aria-expanded="false"
+              aria-controls="observacoes">
+        {ic['info']} <span class="btn-obs-txt">Observações</span>
+      </button>
       <button class="btn-tema" id="btn-tema" type="button"
               aria-label="Alternar modo claro e escuro" title="Alternar tema">
         <span id="ic-tema">{ic['lua']}</span>
@@ -253,6 +278,25 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 </header>
 
 <div class="pagina">
+
+  <!-- O que estava no rodapé: quem lia no celular precisava rolar a lista
+       inteira para descobrir por que um imóvel não aparecia. Aqui em cima,
+       fechado por padrão, fica a um toque de distância. -->
+  <section class="obs" id="observacoes" hidden aria-label="Observações da rodada">
+    <dl class="obs-lista">
+      <div><dt>Preço</dt><dd>até {_fmt_preco(config.FILTROS['preco_max'])}
+        {'(sem piso)' if not config.FILTROS['preco_min'] else
+         'a partir de ' + _fmt_preco(config.FILTROS['preco_min'])}</dd></div>
+      <div><dt>Perfil</dt><dd>{perfis}</dd></div>
+      <div><dt>Idade do anúncio</dt><dd>mais de {config.MAX_DIAS_DESDE_ATUALIZACAO}
+        dias sem atualização é descartado (quando a fonte informa a data)</dd></div>
+      <div><dt>Bairros exibidos</dt><dd>{bairros}</dd></div>
+      {linha_ocultos}
+      <div><dt>Preço mostrado</dt><dd>o MENOR entre as fontes do mesmo imóvel —
+        é o que se paga de fato. "{NAO_LOCALIZADO}" marca dado que a fonte não
+        informou.</dd></div>
+    </dl>
+  </section>
 
   <section class="pulso" aria-label="Resumo da busca">
     <div class="pulso-item">
@@ -342,9 +386,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   </section>
 
   <footer class="rodape">
-    Filtros: {perfis} · R$ {config.FILTROS['preco_min']:,}–{config.FILTROS['preco_max']:,}
-    · anúncio com mais de {config.MAX_DIAS_DESDE_ATUALIZACAO} dias sem atualização é descartado<br>
-    Preço exibido é o menor entre as fontes do imóvel. "{NAO_LOCALIZADO}" marca dado que a fonte não informou.
+    Rodada de {hoje} · {len(dados)} imóveis exibidos
   </footer>
 </div>
 
@@ -595,8 +637,21 @@ inpBusca.addEventListener('input', render);
 el('btn-limpar').addEventListener('click', () => {{
   selCidade.value = ''; selQuartos.value = '0'; selOrdem.value = 'relevancia';
   inpMin.value = inpMax.value = inpBusca.value = '';
+  // O bairro precisa ser zerado ANTES de repovoar a lista: preencherBairros
+  // preserva a seleção atual quando ela ainda existe entre as opções, então
+  // sem esta linha "Limpar" deixava o filtro de bairro de pé -- e a tela
+  // continuava mostrando um punhado de imóveis, com cara de botão quebrado.
+  selBairro.value = '';
   Object.values(chips).forEach(c => c.setAttribute('aria-pressed', 'false'));
   preencherBairros(); render();
+}});
+
+/* ---------- observações ---------- */
+const btnObs = el('btn-obs'), painelObs = el('observacoes');
+btnObs.addEventListener('click', () => {{
+  const aberto = btnObs.getAttribute('aria-expanded') === 'true';
+  btnObs.setAttribute('aria-expanded', String(!aberto));
+  painelObs.hidden = aberto;
 }});
 
 /* ---------- abas ---------- */

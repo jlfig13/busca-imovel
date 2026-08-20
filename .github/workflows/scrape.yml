@@ -1,8 +1,14 @@
 name: Monitor de Apartamentos
 
-# Roda TODO DIA às 07:13 BRT (10:13 UTC) + permite disparo manual.
+# Roda DUAS VEZES POR DIA: 08:13 e 18:13 BRT (11:13 e 21:13 UTC), mais o
+# disparo manual.
 #
-# O minuto 13 é de propósito. Cron de hora cheia ("0 10 * * *") cai na
+# Duas rodadas porque anúncio de aluguel bom sai do ar no mesmo dia: com uma
+# leitura diária, o imóvel publicado de manhã e alugado à tarde nunca chega
+# a aparecer. A da tarde também pega a reprecificação, que costuma ser
+# lançada em horário comercial.
+#
+# O minuto 13 é de propósito. Cron de hora cheia ("0 11 * * *") cai na
 # janela de maior concorrência do GitHub e costuma atrasar de 10 a 30 min --
 # a fila é global. Um minuto quebrado sai dessa disputa e o disparo fica
 # muito mais próximo do horário pedido.
@@ -12,7 +18,8 @@ name: Monitor de Apartamentos
 # execuções produziram 261 pontos de histórico e ZERO mudança observada.
 on:
   schedule:
-    - cron: "13 10 * * *"
+    - cron: "13 11 * * *"
+    - cron: "13 21 * * *"
   workflow_dispatch: {}
 
 permissions:

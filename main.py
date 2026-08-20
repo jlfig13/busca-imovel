@@ -22,6 +22,7 @@ import dashboard
 import scraper_pratica_internet
 import scraper_cards_inline
 import scraper_playwright
+import utils
 from utils import log
 
 # Mapeia o "tipo" de site (config.py) para o módulo de scraping responsável
@@ -188,9 +189,27 @@ def rodar():
     # em vez de repetir o mesmo apartamento uma vez por portal.
     imoveis = db.consolidar_imoveis(todos_itens)
 
-    report.gerar_excel(imoveis)
+    # Recorte de APRESENTAÇÃO (config.BAIRROS_EXIBIDOS). O banco guarda a
+    # cidade inteira -- é dele que sai a série de preço e o dedupe entre
+    # portais --, mas dashboard e planilha mostram só os bairros escolhidos.
+    # Filtrar aqui, e não na coleta, é o que permite mudar de ideia sobre um
+    # bairro sem recomeçar o histórico dele do zero.
+    exibidos = [i for i in imoveis
+                if utils.bairro_exibivel(i.get("cidade"), i.get("bairro"))]
+    ocultos = {
+        "sem_bairro": sum(1 for i in imoveis if not i.get("bairro")),
+        "fora": len(imoveis) - len(exibidos) - sum(
+            1 for i in imoveis if not i.get("bairro")),
+    }
+    log.info(
+        f"Apresentação: {len(exibidos)} de {len(imoveis)} imóveis nos bairros "
+        f"escolhidos ({ocultos['fora']} fora, {ocultos['sem_bairro']} sem bairro)"
+    )
+
+    report.gerar_excel(exibidos)
     caminho_dashboard = dashboard.gerar_dashboard(
-        imoveis, db.resumo_fontes(execucao_id), db.rendimento_por_fonte()
+        exibidos, db.resumo_fontes(execucao_id), db.rendimento_por_fonte(),
+        ocultos=ocultos,
     )
 
     saude = db.resumo_fontes(execucao_id)

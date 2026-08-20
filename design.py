@@ -189,6 +189,35 @@ a{color:inherit;}
 .btn-tema:hover{border-color:var(--linha-forte); color:var(--tinta);}
 .btn-tema svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;}
 
+.btn-obs{
+  height:32px; padding:0 10px; border-radius:var(--r); cursor:pointer;
+  border:1px solid var(--linha); background:transparent; color:var(--tinta-suave);
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--sans); font-size:12.5px; font-weight:550;
+}
+.btn-obs:hover{border-color:var(--linha-forte); color:var(--tinta);}
+.btn-obs svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;}
+.btn-obs[aria-expanded="true"]{
+  background:var(--superficie-2); color:var(--tinta); border-color:var(--linha-forte);
+}
+
+/* ---------- observações ---------- */
+/* Estava no rodapé. No celular isso significava rolar a lista inteira para
+   descobrir por que um imóvel não aparecia -- ou seja, ninguém lia. */
+.obs{
+  margin:16px 0 0; padding:14px 16px;
+  background:var(--superficie); border:1px solid var(--linha);
+  border-radius:var(--r-card);
+}
+.obs-lista{margin:0; display:grid; gap:10px;}
+.obs-lista > div{display:grid; grid-template-columns:150px 1fr; gap:12px;}
+.obs-lista dt{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--tinta-fraca); padding-top:2px;
+}
+.obs-lista dd{margin:0; font-size:13px; color:var(--tinta-media); line-height:1.55;}
+.obs-lista dd b{color:var(--tinta); font-weight:600;}
+
 /* ---------- pulso: os números que importam ---------- */
 .pulso{
   display:grid; grid-template-columns:repeat(auto-fit, minmax(112px, 1fr));
@@ -564,7 +593,10 @@ a{color:inherit;}
     padding-left:max(16px, env(safe-area-inset-left));
     padding-right:max(16px, env(safe-area-inset-right));
   }
-  .topo-linha{height:52px; gap:10px;}
+  .topo-linha{height:52px; gap:8px;}
+  .btn-obs{height:40px;}
+  .obs{padding:12px 14px;}
+  .obs-lista > div{grid-template-columns:1fr; gap:2px;}
   .marca{font-size:14.5px; gap:8px; min-width:0;}
   .btn-tema{width:40px; height:40px;}
 
@@ -613,6 +645,8 @@ a{color:inherit;}
 /* Telas estreitas (o Poco cai aqui com fonte do sistema aumentada). */
 @media (max-width:430px){
   .marca-sub{display:none;}
+  .btn-obs-txt{display:none;}
+  .btn-obs{width:40px; padding:0; justify-content:center;}
   .imovel-titulo{font-size:15.5px;}
   .preco-val{font-size:21px;}
 }
@@ -626,6 +660,7 @@ ICONES = {
     "externo": '<svg viewBox="0 0 20 20"><path d="M11.5 4H16v4.5"/><path d="M16 4 9.5 10.5"/><path d="M15 12v3.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3.5"/></svg>',
     "filtro": '<svg viewBox="0 0 20 20"><path d="M3.5 5.5h13M6 10h8M8.5 14.5h3"/></svg>',
     "moeda": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.8"/><path d="M10 6v8M12 8.2c0-1-.9-1.7-2-1.7s-2 .7-2 1.6c0 2.2 4 1.2 4 3.4 0 .9-.9 1.6-2 1.6s-2-.7-2-1.7"/></svg>',
+    "info": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.2"/><path d="M10 9.2v4.3M10 6.6v.1"/></svg>',
     "sol": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 4.3l-1.4 1.4M5.7 14.3l-1.4 1.4"/></svg>',
     "lua": '<svg viewBox="0 0 20 20"><path d="M16.5 11.8A6.8 6.8 0 0 1 8.2 3.5a6.8 6.8 0 1 0 8.3 8.3Z"/></svg>',
     "foto": '<svg viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.2" r="1.3"/><path d="m3.5 14 4-3.6 3 2.6 2.6-2.2 3.4 3"/></svg>',
