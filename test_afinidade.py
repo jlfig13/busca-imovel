@@ -65,3 +65,39 @@ def test_selo_vai_para_os_melhores_e_no_maximo_tres():
 
 def test_lista_vazia_nao_explode():
     assert afinidade.pontuar([]) == []
+
+
+def test_selo_so_sai_em_bairro_preferido():
+    """Barato fora da lista não vira recomendação.
+
+    Sem esta regra a sugestão apontava Arruda e Bairro Novo: a nota media
+    preço e área, e um imóvel barato o bastante vencia a localização — que
+    era justamente o ponto."""
+    barato_fora = _imovel(bairro="Arruda", preco=1450.0, precoM2=10.0)
+    caro_dentro = _imovel(bairro="Graças", preco=2400.0, precoM2=30.0)
+    afinidade.pontuar([barato_fora, caro_dentro])
+    assert barato_fora["score"] > caro_dentro["score"]   # continua bem posto
+    assert barato_fora["melhor"] is False                # mas sem selo
+    assert barato_fora["motivos"]                        # e com as tags de mérito
+
+
+def test_sem_bairro_preferido_na_lista_ninguem_ganha_selo():
+    """Nenhum imóvel nos bairros certos: nenhuma sugestão, não a segunda melhor."""
+    fora = [_imovel(bairro="Arruda", preco=1500.0 + n) for n in range(4)]
+    afinidade.pontuar(fora)
+    assert not any(i["melhor"] for i in fora)
+
+
+def test_melhores_do_bairro_preferido_ganham_selo_mesmo_em_rodada_fraca():
+    """Dentro da lista curta, o melhor do dia é o que se quer ver.
+
+    Somar piso de nota à restrição de bairro deixava a tela sem sugestão
+    nenhuma: medido, os melhores em bairro preferido marcavam 40 e 34
+    contra um piso de 45."""
+    preferidos = [_imovel(bairro=b, preco=2300.0 + n * 50, precoM2=28.0 + n)
+                  for n, b in enumerate(("Graças", "Aflitos", "Rosarinho"))]
+    baratos_fora = [_imovel(bairro="Arruda", preco=1400.0, precoM2=12.0)
+                    for _ in range(3)]
+    afinidade.pontuar(preferidos + baratos_fora)
+    assert [i["melhor"] for i in preferidos] == [True, True, True]
+    assert not any(i["melhor"] for i in baratos_fora)

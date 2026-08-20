@@ -23,6 +23,7 @@ import galeria
 import scraper_pratica_internet
 import scraper_cards_inline
 import scraper_playwright
+import scraper_chavesnamao
 import utils
 from utils import log
 
@@ -35,6 +36,7 @@ SCRAPERS = {
     "html_estatico": scraper_pratica_internet,
     "cards_inline": scraper_cards_inline,
     "playwright": scraper_playwright,
+    "chavesnamao": scraper_chavesnamao,
 }
 
 

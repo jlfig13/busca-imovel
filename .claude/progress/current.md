@@ -15,6 +15,10 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**20/08 (5):** Chaves na Mão (Recife e Olinda) incluído, com custo total
+lido da página do imóvel; selo "Melhor achado" restrito aos bairros
+preferidos (agora 10, com Encruzilhada, Torreão, Rosarinho e Campo Grande).
+
 **20/08 (4):** fotos em todas as fontes (card + galeria da página do
 anúncio, até 12, com carrossel) e nota de afinidade com selo "Melhor
 achado" — perfil respondido pelo usuário em `config.PERFIL`.

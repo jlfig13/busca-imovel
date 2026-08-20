@@ -650,8 +650,9 @@ function render(){{
               : `<span class="rua rua-ausente">· endereço ${{NAO_LOC}}</span>`}}</div>
         <div class="ficha">${{ficha(d)}}</div>
         <div class="selos">${{selos(d)}}</div>
-        ${{d.melhor && d.motivos.length
-            ? `<div class="porque">${{IC.estrela}} ${{esc(d.motivos.join(' · '))}}</div>`
+        ${{d.motivos.length
+            ? `<div class="porque${{d.melhor ? ' destaque' : ''}}">${{
+                 d.melhor ? IC.estrela : ''}} ${{esc(d.motivos.join(' · '))}}</div>`
             : ''}}
         <div class="imovel-rodape">
           <div class="preco-bloco">
