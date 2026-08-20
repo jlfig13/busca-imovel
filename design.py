@@ -295,10 +295,50 @@ a{color:inherit;}
   margin-top:12px; font-family:var(--mono);
 }
 
+/* ---------- barra de filtros ---------- */
+.barra-filtros{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:14px 0 12px;
+}
+.btn-filtros{
+  display:inline-flex; align-items:center; gap:7px;
+  height:36px; padding:0 12px; border-radius:9px; cursor:pointer;
+  border:1px solid var(--linha-forte); background:var(--fundo);
+  color:var(--tinta-media); font-family:var(--sans); font-size:13.5px; font-weight:550;
+}
+.btn-filtros:hover{color:var(--tinta); background:var(--superficie);}
+.btn-filtros svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;}
+.seta{
+  display:inline-flex; color:var(--tinta-fraca);
+  transition:transform .16s ease;
+}
+.seta svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;}
+[aria-expanded="true"] > .seta,
+[aria-expanded="true"] .seta{transform:rotate(90deg);}
+/* Contador: esconder filtro sem dizer que existe filtro faria uma busca
+   estreita parecer fonte vazia. */
+.filtros-n{
+  min-width:18px; height:18px; padding:0 5px; border-radius:9px;
+  background:var(--mar); color:#fff;
+  font-family:var(--mono); font-size:10.5px; font-weight:700;
+  display:inline-grid; place-items:center;
+}
+:root[data-tema="escuro"] .filtros-n,
+:root:not([data-tema="claro"]) .filtros-n{color:#0D1114;}
+@media (prefers-color-scheme: light){
+  :root:not([data-tema="escuro"]) .filtros-n{color:#fff;}
+}
+.barra-filtros .contagem{padding:0; margin-left:auto;}
+
+/* display:flex/grid vence o atributo [hidden] -- sem isto a barra nasce
+   aberta e o contador aparece marcando zero */
+.filtros[hidden],.filtros-n[hidden],.barra-filtros[hidden]{display:none;}
+
 /* ---------- filtros ---------- */
 .filtros{
   display:flex; flex-wrap:wrap; gap:8px; align-items:center;
-  padding:0 0 14px; border-bottom:1px solid var(--linha);
+  padding:0 0 14px;
 }
 .campo{
   display:inline-flex; align-items:center; gap:6px;
@@ -453,11 +493,7 @@ a{color:inherit;}
   white-space:nowrap;
 }
 .btn-ofertas:hover{color:var(--tinta); background:var(--superficie);}
-.btn-ofertas .seta{
-  display:inline-block; font-size:9px; color:var(--tinta-fraca);
-  transition:transform .16s ease;
-}
-.btn-ofertas[aria-expanded="true"] .seta{transform:rotate(90deg);}
+
 
 /* ---------- sinais ---------- */
 /* Um selo só ganha cor quando exige AÇÃO. O resto é monocromático, para o
@@ -513,7 +549,10 @@ a{color:inherit;}
   color:var(--bom); margin-left:6px;
 }
 
-.faixa{width:56px;height:20px;vertical-align:-4px;flex-shrink:0;}
+.faixa{
+  display:block; width:64px; height:16px; margin-top:3px; flex-shrink:0;
+  overflow:visible;
+}
 
 /* ---------- estado vazio ---------- */
 .estado-vazio{
@@ -660,6 +699,7 @@ ICONES = {
     "externo": '<svg viewBox="0 0 20 20"><path d="M11.5 4H16v4.5"/><path d="M16 4 9.5 10.5"/><path d="M15 12v3.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3.5"/></svg>',
     "filtro": '<svg viewBox="0 0 20 20"><path d="M3.5 5.5h13M6 10h8M8.5 14.5h3"/></svg>',
     "moeda": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.8"/><path d="M10 6v8M12 8.2c0-1-.9-1.7-2-1.7s-2 .7-2 1.6c0 2.2 4 1.2 4 3.4 0 .9-.9 1.6-2 1.6s-2-.7-2-1.7"/></svg>',
+    "seta": '<svg viewBox="0 0 20 20"><path d="m8 5 5 5-5 5"/></svg>',
     "info": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.2"/><path d="M10 9.2v4.3M10 6.6v.1"/></svg>',
     "sol": '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 4.3l-1.4 1.4M5.7 14.3l-1.4 1.4"/></svg>',
     "lua": '<svg viewBox="0 0 20 20"><path d="M16.5 11.8A6.8 6.8 0 0 1 8.2 3.5a6.8 6.8 0 1 0 8.3 8.3Z"/></svg>',
