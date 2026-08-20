@@ -11,6 +11,7 @@ import html
 import json
 from datetime import date
 
+import afinidade
 import config
 import db
 import design
@@ -198,11 +199,16 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
             "anuncios": anuncios,
             "economia": i.get("economia") or 0,
             "url": urls_item[0] if urls_item else "#",
-            "foto": i.get("foto"),
+            "fotos": i.get("fotos") or ([i["foto"]] if i.get("foto") else []),
             "novo": bool(i.get("novo")),
             "historico": hist,
             "queda": queda,
         })
+
+    # Nota de afinidade: quem combina com o perfil vai para o topo com selo.
+    # Roda aqui, e não no main, para que qualquer geração do HTML (inclusive
+    # a partir de uma cópia do banco, em teste de layout) traga a sugestão.
+    afinidade.pontuar(dados)
 
     novos = sum(1 for d in dados if d["novo"])
     quedas = sum(1 for d in dados if d["queda"])
@@ -366,7 +372,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     </label>
     <label class="campo">
       <select id="f-ordem" aria-label="Ordenação">
-        <option value="relevancia">Novos primeiro</option>
+        <option value="relevancia">Sugeridos para você</option>
         <option value="preco">Menor preço</option>
         <option value="m2">Melhor R$/m²</option>
         <option value="area">Maior área</option>
@@ -402,7 +408,8 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 <script>
 const DADOS = {json_dados};
 const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
-const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto', 'seta')}, ensure_ascii=False)};
+const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto', 'seta',
+                        'estrela')}, ensure_ascii=False)};
 
 /* ---------- tema ---------- */
 const raiz = document.documentElement;
@@ -521,10 +528,14 @@ function ordenar(lista){{
   if (o === 'm2') return c.sort((a,b) => (a.precoM2 ?? 1e9) - (b.precoM2 ?? 1e9));
   if (o === 'area') return c.sort((a,b) => (b.area ?? 0) - (a.area ?? 0));
   if (o === 'tempo') return c.sort((a,b) => (a.diasAnunciado ?? 1e9) - (b.diasAnunciado ?? 1e9));
-  // relevância: novo primeiro, depois quem baixou, depois menor preço
+  // Sugestão: nota de afinidade primeiro (config.PERFIL), empate desfeito
+  // por novidade e preço. Era "novo primeiro" puro -- que colocava na frente
+  // qualquer anúncio recém-publicado, inclusive o que não serve.
   return c.sort((a,b) =>
-    (b.novo - a.novo) || ((b.queda ? 1 : 0) - (a.queda ? 1 : 0)) ||
-    ((a.preco ?? 1e9) - (b.preco ?? 1e9)));
+    ((b.atende ? 1 : 0) - (a.atende ? 1 : 0)) ||
+    ((b.melhor ? 1 : 0) - (a.melhor ? 1 : 0)) ||
+    ((b.score ?? 0) - (a.score ?? 0)) ||
+    (b.novo - a.novo) || ((a.preco ?? 1e9) - (b.preco ?? 1e9)));
 }}
 
 /* ---------- render ---------- */
@@ -534,6 +545,7 @@ const lista = el('lista'), contagem = el('contagem');
    onde o olho pousa no card. Os de contexto ficam no corpo. */
 function selosFoto(d){{
   const s = [];
+  if (d.melhor) s.push('<span class="selo selo-melhor">★ Melhor achado</span>');
   if (d.novo) s.push('<span class="selo selo-novo">Novo</span>');
   if (d.queda) s.push(`<span class="selo selo-queda">Baixou ${{brl(d.queda)}}</span>`);
   return s.join('');
@@ -551,16 +563,48 @@ function selos(d){{
   return s.join('');
 }}
 
-/* Foto de capa. Sem rede (ou sem foto na fonte) cai no marcador cinza:
-   o dashboard tem de continuar legível offline, que é a premissa dele. */
+/* Capa com galeria. Sem rede (ou sem foto na fonte) cai no marcador
+   cinza: o dashboard tem de continuar legível offline, que é a premissa
+   dele.
+
+   Uma <img> só, trocando o src, em vez de um carrossel com as doze fotos
+   no DOM. Com 19 cards, empilhar a galeria inteira seriam ~230 imagens
+   pedidas de uma vez -- a lista levaria segundos para ficar utilizável no
+   celular, para mostrar fotos que quase ninguém percorre. Aqui a segunda
+   foto só é baixada quando alguém pede. */
 function capa(d){{
+  const fotos = d.fotos || [];
   const vazio = `<div class="foto-vazia">${{IC.foto}}</div>`;
-  const img = d.foto
-    ? `<img src="${{esc(d.foto)}}" alt="" loading="lazy" decoding="async"
-         onerror="this.remove()">`
+  const img = fotos.length
+    ? `<img src="${{esc(fotos[0])}}" alt="" loading="lazy" decoding="async"
+         onerror="this.closest('.foto').classList.add('sem-foto')">`
     : '';
-  return `<div class="foto">${{vazio}}${{img}}
+  const nav = fotos.length > 1
+    ? `<button class="foto-nav ant" type="button" aria-label="Foto anterior">${{IC.seta}}</button>
+       <button class="foto-nav prox" type="button" aria-label="Próxima foto">${{IC.seta}}</button>
+       <span class="foto-conta">1/${{fotos.length}}</span>`
+    : '';
+  return `<div class="foto${{fotos.length ? '' : ' sem-foto'}}">${{vazio}}${{img}}${{nav}}
     <div class="foto-selos">${{selosFoto(d)}}</div></div>`;
+}}
+
+/* Troca de foto no card já montado. */
+function ligarGaleria(card, fotos){{
+  if (fotos.length < 2) return;
+  const img = card.querySelector('.foto img');
+  const conta = card.querySelector('.foto-conta');
+  let i = 0;
+  const ir = passo => {{
+    i = (i + passo + fotos.length) % fotos.length;
+    img.src = fotos[i];
+    conta.textContent = `${{i + 1}}/${{fotos.length}}`;
+  }};
+  card.querySelector('.foto-nav.ant').addEventListener('click', e => {{
+    e.stopPropagation(); ir(-1);
+  }});
+  card.querySelector('.foto-nav.prox').addEventListener('click', e => {{
+    e.stopPropagation(); ir(1);
+  }});
 }}
 
 function ficha(d){{
@@ -606,6 +650,9 @@ function render(){{
               : `<span class="rua rua-ausente">· endereço ${{NAO_LOC}}</span>`}}</div>
         <div class="ficha">${{ficha(d)}}</div>
         <div class="selos">${{selos(d)}}</div>
+        ${{d.melhor && d.motivos.length
+            ? `<div class="porque">${{IC.estrela}} ${{esc(d.motivos.join(' · '))}}</div>`
+            : ''}}
         <div class="imovel-rodape">
           <div class="preco-bloco">
             <div class="preco-val">${{esc(d.precoFmt)}}<span class="preco-un">/mês</span></div>
@@ -620,6 +667,8 @@ function render(){{
           </div>
         </div>
       </div>`;
+
+    ligarGaleria(card, d.fotos || []);
 
     // Progressive disclosure: só o imóvel com mais de uma oferta expande, e
     // a expansão vive DENTRO do card -- solta embaixo, parecia de outro

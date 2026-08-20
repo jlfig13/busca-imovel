@@ -59,6 +59,27 @@ BAIRROS_EXIBIDOS = {
     "Olinda": ["Casa Caiada", "Bairro Novo"],
 }
 
+# ---------------------------------------------------------------------------
+# PERFIL DE ESCOLHA (nota de afinidade)
+# ---------------------------------------------------------------------------
+# O filtro responde "cabe?". Este perfil responde "é o melhor?" -- e é o que
+# faz o dashboard colocar sugestão no topo em vez de despejar 19 anúncios
+# equivalentes. Respondido pelo usuário em 19/08/2026:
+#
+#   - pesam junto: custo mensal baixo, área pelo preço e bairro certo;
+#   - menos de 3 quartos derruba a nota (não esconde: um 2 quartos grande e
+#     barato ainda merece ser visto, só não na frente);
+#   - o resultado aparece como selo "Melhor achado" nos três primeiros.
+#
+# Mexer aqui muda a recomendação, não a coleta.
+PERFIL = {
+    "bairros_preferidos": [
+        "Casa Amarela", "Casa Forte", "Graças", "Espinheiro", "Aflitos",
+        "Jaqueira",
+    ],
+    "quartos_min_desejado": 3,
+}
+
 # Idade máxima aceita quando a fonte declara a data de atualização.
 # O Portal CRECI carimba "Atualizado em: dd/mm/aaaa" em cada card e boa parte
 # do inventário está parada há meses -- imóvel de aluguel anunciado há muito

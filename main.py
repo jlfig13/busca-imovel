@@ -19,6 +19,7 @@ import db
 import report
 import robots
 import dashboard
+import galeria
 import scraper_pratica_internet
 import scraper_cards_inline
 import scraper_playwright
@@ -46,6 +47,39 @@ def _versao_codigo() -> str:
         ).stdout.strip()
     except Exception:
         return ""
+
+
+def _completar_galerias(imoveis: list[dict]) -> None:
+    """Busca a galeria dos imóveis exibidos e persiste no banco.
+
+    Trabalha sobre os ANÚNCIOS do imóvel (é neles que a foto é gravada), e
+    para no primeiro que devolver galeria: dois portais anunciando o mesmo
+    apartamento mostram as mesmas paredes."""
+    pendentes = []
+    for imovel in imoveis:
+        anuncios = imovel.get("anuncios") or []
+        if any((a.get("fotos") or []) for a in anuncios):
+            continue
+        pendentes += [dict(a) for a in anuncios[:2]]
+
+    if not pendentes:
+        return
+
+    galeria.enriquecer(pendentes)
+    novas = {a["url"]: a["fotos"] for a in pendentes if a.get("fotos")}
+    if novas:
+        db.atualizar_fotos(novas)
+        # o dashboard é gerado a seguir, na mesma execução: sem isto as
+        # fotos só apareceriam na rodada seguinte
+        por_url = {a["url"]: a["fotos"] for a in pendentes if a.get("fotos")}
+        for imovel in imoveis:
+            if imovel.get("foto"):
+                continue
+            for a in imovel.get("anuncios") or []:
+                if por_url.get(a["url"]):
+                    imovel["foto"] = por_url[a["url"]][0]
+                    imovel["fotos"] = por_url[a["url"]]
+                    break
 
 
 def rodar():
@@ -205,6 +239,15 @@ def rodar():
         f"Apresentação: {len(exibidos)} de {len(imoveis)} imóveis nos bairros "
         f"escolhidos ({ocultos['fora']} fora, {ocultos['sem_bairro']} sem bairro)"
     )
+
+    # Galeria completa: uma requisição por imóvel EXIBIDO que ainda esteja
+    # sem fotos. Só Viva Real e Zap publicam imagem na listagem (e mesmo
+    # assim cinco por anúncio) -- as outras dezesseis fontes chegavam aqui
+    # sem foto nenhuma, e card sem foto é card que ninguém abre.
+    #
+    # Depois do recorte, e não antes: visitar a cidade inteira gastaria uma
+    # requisição por anúncio para encher de foto imóvel que ninguém vai ver.
+    _completar_galerias(exibidos)
 
     report.gerar_excel(exibidos)
     caminho_dashboard = dashboard.gerar_dashboard(

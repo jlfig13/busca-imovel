@@ -91,3 +91,67 @@ def test_teto_de_visitas_por_rodada():
         max_visitas=3,
     )
     assert len(visitas) == 3
+
+
+# ---------------------------------------------------------------------------
+# galeria: catálogo de fotos da página do anúncio
+# ---------------------------------------------------------------------------
+import galeria
+
+PAGINA_GALERIA = """
+<html><head>
+  <meta property="og:image" content="https://cdn.x.com/imoveis/99/capa.jpg">
+</head><body>
+  <img src="https://cdn.x.com/assets/logo.png">
+  <img src="https://cdn.x.com/imoveis/99/sala.jpg">
+  <img data-src="https://cdn.x.com/imoveis/99/quarto.webp">
+  <img srcset="https://cdn.x.com/imoveis/99/cozinha.jpg 320w,
+               https://cdn.x.com/imoveis/99/cozinha-g.jpg 1024w">
+  <img src="https://outro.com/imoveis/99/vizinho.jpg">
+</body></html>
+"""
+
+
+def test_galeria_parte_da_ancora_e_recolhe_a_mesma_pasta():
+    fotos = galeria.coletar(PAGINA_GALERIA, "https://x.com/imovel/99")
+    assert fotos[0] == "https://cdn.x.com/imoveis/99/capa.jpg"
+    assert "https://cdn.x.com/imoveis/99/sala.jpg" in fotos
+    assert "https://cdn.x.com/imoveis/99/quarto.webp" in fotos
+    # srcset: fica a maior (a última do conjunto)
+    assert "https://cdn.x.com/imoveis/99/cozinha-g.jpg" in fotos
+
+
+def test_galeria_descarta_interface_e_pasta_alheia():
+    """Logo do portal e imagem de outro host não são foto do imóvel.
+
+    Recolher todo <img> da página traria logotipo, ícone de WhatsApp e selo
+    de CRECI -- medido no Portal CRECI, onde o primeiro <img> é o logo."""
+    fotos = galeria.coletar(PAGINA_GALERIA, "https://x.com/imovel/99")
+    assert not any("logo" in f for f in fotos)
+    assert not any("outro.com" in f for f in fotos)
+
+
+def test_galeria_sem_ancora_devolve_vazio():
+    """Sem og:image nem JSON-LD não há de onde partir; devolver <img> solto
+    seria trazer interface em vez de imóvel."""
+    assert galeria.coletar("<html><img src='https://x.com/a/b.jpg'></html>", "https://x.com") == []
+
+
+def test_galeria_desiste_do_host_que_bloqueia():
+    """OLX devolve 403: insistir gasta 3 retries por anúncio para nada."""
+    tentativas = []
+
+    def buscar(u):
+        tentativas.append(u)
+        return None
+
+    itens = [{"url": f"https://pe.olx.com.br/a/{n}", "fotos": []} for n in range(6)]
+    galeria.enriquecer(itens, buscar=buscar)
+    assert len(tentativas) == galeria.FALHAS_ATE_DESISTIR
+
+
+def test_galeria_nao_visita_quem_ja_tem_fotos():
+    visitas = []
+    itens = [{"url": "https://x/1", "fotos": ["a", "b", "c"]}]
+    galeria.enriquecer(itens, buscar=lambda u: visitas.append(u) or PAGINA_GALERIA)
+    assert visitas == []

@@ -164,7 +164,17 @@ def enriquecer(itens: list[dict], indice: dict[str, dict]) -> int:
         for campo in ("quartos", "area_m2", "banheiros", "andar",
                       "logradouro", "cep", "descricao", "fotos"):
             valor = extra.get(campo)
-            if valor in (None, [], "") or item.get(campo) not in (None, [], ""):
+            if valor in (None, [], ""):
+                continue
+            # Fotos são exceção à regra "não sobrescrever": o card traz UMA
+            # miniatura e o JSON-LD costuma trazer cinco. Ganha a lista
+            # maior, não a que chegou primeiro.
+            if campo == "fotos":
+                if len(valor) > len(item.get("fotos") or []):
+                    item["fotos"] = valor
+                    preenchidos += 1
+                continue
+            if item.get(campo) not in (None, [], ""):
                 continue
             item[campo] = int(valor) if campo in ("quartos", "banheiros", "andar") else valor
             preenchidos += 1
