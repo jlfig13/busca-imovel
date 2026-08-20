@@ -72,6 +72,28 @@
   `BAIRROS_CANONICOS`; sem eles o imóvel chegaria sem bairro e sumiria da
   apresentação justamente nos bairros pedidos.
 
+### Custo real e UI (20/08/2026)
+
+- [x] **Custo no detalhe** (`detalhe_custo.py`) — a CTI mostra "R$ 1.850" no
+  card e só na página do imóvel revela condomínio de R$ 953 e IPTU de R$ 194:
+  **R$ 2.997 reais**. O anúncio entrava no dashboard fingindo caber no teto —
+  não é um imóvel a menos, é um imóvel errado ocupando a lista.
+  Opt-in por fonte (`"custo_no_detalhe": True`), com dois cortes para não
+  virar varredura: não visita quem já tem custo completo nem quem já estourou
+  o teto (somar encargos só aumenta). Teto de 40 visitas por rodada.
+  Verificado contra a página real: 1.850 → 2.997, veredito REPROVADO.
+- [x] **Botão "Observações" no topo** — filtros, bairros e contagem de
+  ocultos saíram do rodapé. No celular, rodapé significa rolar a lista
+  inteira para descobrir por que um imóvel não aparece; ou seja, ninguém lia.
+- [x] **"Limpar" não limpava o bairro** — `preencherBairros()` preserva a
+  seleção quando ela ainda existe entre as opções, então o filtro de bairro
+  ficava de pé e a tela seguia mostrando poucos imóveis, com cara de botão
+  quebrado.
+- [x] **Fotos: nada a fazer** — já são URLs no banco (campo `fotos`, JSON),
+  nunca imagem salva. 5 URLs por anúncio, 50 KB no total = 7,4% do banco. O
+  dedupe usa o hash de todas elas (`resolucao.comp_fotos`), então cortar para
+  uma só enfraqueceria o agrupamento sem ganho real de tamanho.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.

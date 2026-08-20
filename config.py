@@ -119,6 +119,11 @@ SITES = [
         # específico.
         "seletor_href": "/imovel/apartamento-para-alugar-",
         "max_paginas": 3,
+        # O card mostra só o aluguel. A página do imóvel traz "Valor /
+        # Condomínio / IPTU / Total" -- e a diferença é enorme: um anúncio
+        # de R$ 1.850 no card custa R$ 2.997 por mês (condomínio de R$ 953).
+        # Sem esta visita, ele entrava no dashboard como se coubesse no teto.
+        "custo_no_detalhe": True,
     },
     {
         "nome": "Âncora Imobiliária",
