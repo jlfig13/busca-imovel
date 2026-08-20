@@ -51,6 +51,27 @@
 - [x] **REMAX reativado** — rota nova `/listings?...&TransactionTypeUID=260`.
   Na primeira rodada: 64 coletados, 4 no filtro, 1 imóvel exclusivo.
 
+### Parâmetros de busca (20/08/2026)
+
+- [x] **Preço 0–2.500** — o piso de 1.500 escondia oportunidade real; quem
+  julga anúncio barato demais é o olho, no dashboard. `ps=0` NÃO vai para a
+  URL do OLX: zero ali é piso literal, e portal que o trata como valor
+  válido pode devolver busca vazia — sem o parâmetro, a listagem
+  simplesmente não tem piso.
+- [x] **Recorte de bairros na apresentação** (`config.BAIRROS_EXIBIDOS`) —
+  25 bairros em Recife, 2 em Olinda (Casa Caiada, Bairro Novo). A COLETA
+  segue cobrindo a cidade inteira: filtrar na coleta faria o histórico de um
+  imóvel recomeçar do zero toda vez que a lista mudasse, e o dedupe entre
+  portais perderia o par que mora fora do recorte.
+  Imóvel sem bairro não é exibido — "não sei onde fica" não é o mesmo que
+  "fica num bairro escolhido". O rodapé mostra quantos ficaram de fora, por
+  motivo: filtro silencioso é indistinguível de fonte quebrada.
+  Primeira medição: 19 de 49 imóveis visíveis (26 fora, 4 sem bairro).
+- [x] **Gazetteer completado** — Paissandu, Hipódromo, Torreão, Jaqueira,
+  Santana e "Bairro do Recife" (mesma coisa que Recife Antigo) faltavam em
+  `BAIRROS_CANONICOS`; sem eles o imóvel chegaria sem bairro e sumiria da
+  apresentação justamente nos bairros pedidos.
+
 ### Ainda aberto
 
 - [ ] **Decidir o corte de fontes** — os dados agora existem na aba Fontes.

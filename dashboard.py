@@ -153,7 +153,8 @@ def _painel_rendimento(rendimento: list[dict] | None) -> str:
 
 
 def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
-                    rendimento: list[dict] | None = None) -> str:
+                    rendimento: list[dict] | None = None,
+                    ocultos: dict | None = None) -> str:
     """Monta o dashboard a partir dos IMÓVEIS consolidados (não anúncios)."""
 
     urls = [u for i in itens for u in (i.get("urls") or [i.get("url", "")])]
@@ -217,6 +218,25 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
         f"{c} {p['quartos_min']}+ qtos, {p['area_min']}m²+"
         for c, p in config.FILTROS_POR_CIDADE.items()
     )
+    bairros = " · ".join(
+        f"<b>{html.escape(c)}</b>: " + ", ".join(html.escape(b) for b in bs)
+        for c, bs in config.BAIRROS_EXIBIDOS.items()
+    )
+    # Contagem do que o recorte de bairro escondeu. Aparece porque filtro
+    # silencioso é indistinguível de fonte quebrada: sem a linha, uma rodada
+    # ruim e uma lista de bairros estreita demais têm exatamente a mesma
+    # cara -- poucos imóveis e nenhuma explicação.
+    linha_ocultos = ""
+    if ocultos and (ocultos.get("fora") or ocultos.get("sem_bairro")):
+        partes = []
+        if ocultos.get("fora"):
+            partes.append(f"{ocultos['fora']} em outros bairros")
+        if ocultos.get("sem_bairro"):
+            partes.append(f"{ocultos['sem_bairro']} sem bairro informado")
+        linha_ocultos = (
+            f"Coletados e não exibidos: {' · '.join(partes)}. "
+            f"A coleta cobre a cidade inteira; a lista acima é o recorte.<br>"
+        )
 
     html_final = f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -342,8 +362,10 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   </section>
 
   <footer class="rodape">
-    Filtros: {perfis} · R$ {config.FILTROS['preco_min']:,}–{config.FILTROS['preco_max']:,}
+    Filtros: {perfis} · até {_fmt_preco(config.FILTROS['preco_max'])}
     · anúncio com mais de {config.MAX_DIAS_DESDE_ATUALIZACAO} dias sem atualização é descartado<br>
+    Bairros exibidos — {bairros}<br>
+    {linha_ocultos}
     Preço exibido é o menor entre as fontes do imóvel. "{NAO_LOCALIZADO}" marca dado que a fonte não informou.
   </footer>
 </div>

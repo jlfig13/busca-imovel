@@ -5,12 +5,16 @@ Edite os valores abaixo conforme sua busca.
 """
 
 import os
+import re
 
 # ---------------------------------------------------------------------------
 # FILTROS DE BUSCA
 # ---------------------------------------------------------------------------
 FILTROS = {
-    "preco_min": 1500,
+    # piso zero: anúncio barato demais costuma ser erro de digitação ou
+    # quarto anunciado como apartamento, mas cortar por preço mínimo também
+    # escondia oportunidade real. Quem julga isso é o olho, no dashboard.
+    "preco_min": 0,
     "preco_max": 2500,
 }
 
@@ -24,6 +28,36 @@ FILTROS_POR_CIDADE = {
     "Olinda": {"quartos_min": 3, "area_min": 70},
 }
 FILTRO_PADRAO = FILTROS_POR_CIDADE["Recife"]
+
+# ---------------------------------------------------------------------------
+# BAIRROS EXIBIDOS
+# ---------------------------------------------------------------------------
+# A COLETA continua na cidade inteira -- é ela que alimenta o histórico de
+# preço e a detecção de imóvel repetido entre portais. O que esta lista
+# restringe é a APRESENTAÇÃO: dashboard e planilha mostram só estes bairros.
+#
+# Separar as duas coisas é de propósito. Filtrar na coleta faria o banco
+# perder a série de um imóvel assim que a lista mudasse, e mudar de ideia
+# sobre um bairro exigiria recomeçar o histórico dele do zero.
+#
+# Cidade que não aparece aqui não é exibida (o OLX busca a região
+# metropolitana inteira e traz Jaboatão junto). Bairro vazio também não:
+# sem o dado não dá para afirmar que o imóvel está na lista.
+BAIRROS_EXIBIDOS = {
+    "Recife": [
+        # centro expandido
+        "Recife Antigo", "Boa Vista", "Ilha do Leite", "Paissandu",
+        "Santo Amaro", "Derby", "Santana",
+        # eixo norte
+        "Arruda", "Campo Grande", "Encruzilhada", "Hipódromo", "Rosarinho",
+        "Torreão",
+        # zona norte / Casa Forte e arredores
+        "Aflitos", "Apipucos", "Casa Amarela", "Casa Forte", "Espinheiro",
+        "Graças", "Jaqueira", "Monteiro", "Parnamirim", "Poço da Panela",
+        "Tamarineira", "Torre",
+    ],
+    "Olinda": ["Casa Caiada", "Bairro Novo"],
+}
 
 # Idade máxima aceita quando a fonte declara a data de atualização.
 # O Portal CRECI carimba "Atualizado em: dd/mm/aaaa" em cada card e boa parte
@@ -549,8 +583,20 @@ _PLACEHOLDERS = {
     "preco_max": FILTROS["preco_max"],
 }
 
+# Piso zero não vai para a URL: "ps=0" é um piso literal, e portal que trata
+# 0 como valor válido pode devolver busca vazia. Sem o parâmetro, a listagem
+# simplesmente não tem piso -- que é o que zero significa aqui.
+_RE_PISO_NA_URL = re.compile(r"[?&]ps=\{preco_min\}")
+
 for _site in SITES:
     for _campo in ("url_listagem", "padrao_url_pagina"):
         _valor = _site.get(_campo)
-        if _valor and "{preco_" in _valor:
-            _site[_campo] = _valor.format(**_PLACEHOLDERS)
+        if not _valor or "{preco_" not in _valor:
+            continue
+        if not FILTROS["preco_min"]:
+            _valor = _RE_PISO_NA_URL.sub(
+                lambda m: "?" if m.group(0)[0] == "?" else "", _valor, count=1
+            )
+            # o corte pode ter deixado "?&pe=" -- normaliza
+            _valor = _valor.replace("?&", "?")
+        _site[_campo] = _valor.format(**_PLACEHOLDERS)
