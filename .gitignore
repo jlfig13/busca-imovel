@@ -6,6 +6,9 @@ __pycache__/
 # (não precisa de histórico no git) e o log é só depuração local.
 saida/dashboard.html
 saida/scraper.log
+# HTML gerado à mão para conferir layout antes de publicar; escapou uma vez
+# para dentro de um commit por causa de "git add -A"
+saida/_preview*.html
 
 # apartamentos.db e apartamentos.xlsx SÃO versionados de propósito: é como
 # o histórico de preço/"primeiro visto" sobrevive entre rodadas semanais
