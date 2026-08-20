@@ -225,13 +225,15 @@ def rodar():
     # em vez de repetir o mesmo apartamento uma vez por portal.
     imoveis = db.consolidar_imoveis(todos_itens)
 
-    # Recorte de APRESENTAÇÃO (config.BAIRROS_EXIBIDOS). O banco guarda a
-    # cidade inteira -- é dele que sai a série de preço e o dedupe entre
-    # portais --, mas dashboard e planilha mostram só os bairros escolhidos.
-    # Filtrar aqui, e não na coleta, é o que permite mudar de ideia sobre um
-    # bairro sem recomeçar o histórico dele do zero.
-    exibidos = [i for i in imoveis
-                if utils.bairro_exibivel(i.get("cidade"), i.get("bairro"))]
+    # Recorte de APRESENTAÇÃO (config.BAIRROS_EXIBIDOS). O dashboard leva
+    # TODOS os imóveis e mostra por padrão só os bairros escolhidos, com um
+    # botão para ver o resto -- o interesse muda com o que aparece no dia, e
+    # regerar o arquivo para trocar de recorte seria esperar a próxima
+    # rodada. A marca vai no item; quem decide o que exibir é o dashboard.
+    for i in imoveis:
+        i["noRecorte"] = utils.bairro_exibivel(i.get("cidade"), i.get("bairro"))
+
+    exibidos = [i for i in imoveis if i["noRecorte"]]
     ocultos = {
         "sem_bairro": sum(1 for i in imoveis if not i.get("bairro")),
         "fora": len(imoveis) - len(exibidos) - sum(
@@ -249,11 +251,16 @@ def rodar():
     #
     # Depois do recorte, e não antes: visitar a cidade inteira gastaria uma
     # requisição por anúncio para encher de foto imóvel que ninguém vai ver.
+    # Galeria só para o recorte: é uma requisição por imóvel, e buscar foto
+    # do que está fora dos bairros escolhidos seria gastar rede com o que
+    # quase nunca é aberto. Fora do recorte fica a foto do card.
     _completar_galerias(exibidos)
 
+    # A planilha segue com o recorte -- ela é a lista de trabalho, não o
+    # inventário da cidade.
     report.gerar_excel(exibidos)
     caminho_dashboard = dashboard.gerar_dashboard(
-        exibidos, db.resumo_fontes(execucao_id), db.rendimento_por_fonte(),
+        imoveis, db.resumo_fontes(execucao_id), db.rendimento_por_fonte(),
         ocultos=ocultos,
     )
 

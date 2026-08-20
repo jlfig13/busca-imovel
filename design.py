@@ -295,6 +295,24 @@ a{color:inherit;}
   margin-top:12px; font-family:var(--mono);
 }
 
+/* ---------- escopo de bairros ---------- */
+/* Dois estados exclusivos, lado a lado: é uma escolha, não um filtro que se
+   acumula com os outros. Por isso não usa .chip (que é multi-seleção). */
+.escopo{
+  display:inline-flex; padding:3px; gap:3px; margin-top:2px;
+  background:var(--superficie-2); border-radius:10px;
+}
+.chip-escopo{
+  height:32px; padding:0 12px; border:0; border-radius:8px; cursor:pointer;
+  background:transparent; color:var(--tinta-suave);
+  font-family:var(--sans); font-size:13px; font-weight:550;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.chip-escopo:hover{color:var(--tinta);}
+.chip-escopo[aria-pressed="true"]{
+  background:var(--fundo); color:var(--tinta); box-shadow:var(--sombra);
+}
+
 /* ---------- barra de filtros ---------- */
 .barra-filtros{
   display:flex; align-items:center; gap:12px; flex-wrap:wrap;
@@ -697,6 +715,8 @@ a{color:inherit;}
 
   /* Filtros: três chips numa linha, campos em duas colunas. */
   .filtros{gap:8px; padding-bottom:12px;}
+  .escopo{display:flex; width:100%;}
+  .chip-escopo{flex:1; justify-content:center; height:38px;}
   .chip{
     flex:1 1 calc(33.333% - 6px); justify-content:center;
     height:40px; font-size:13.5px; padding:0 8px;

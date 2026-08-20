@@ -201,6 +201,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
             "url": urls_item[0] if urls_item else "#",
             "fotos": i.get("fotos") or ([i["foto"]] if i.get("foto") else []),
             "novo": bool(i.get("novo")),
+            "noRecorte": bool(i.get("noRecorte", True)),
             "historico": hist,
             "queda": queda,
         })
@@ -242,7 +243,8 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
         linha_ocultos = (
             "<div><dt>Coletados e não exibidos</dt><dd>"
             f"{' · '.join(partes)}. A coleta cobre a cidade inteira; a lista "
-            "de bairros acima é só o recorte da exibição.</dd></div>"
+            "de bairros acima é só o recorte da exibição — o botão "
+            "<b>Todos os bairros</b>, no topo, mostra o resto.</dd></div>"
         )
 
     html_final = f"""<!DOCTYPE html>
@@ -304,33 +306,16 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     </dl>
   </section>
 
-  <section class="pulso" aria-label="Resumo da busca">
-    <div class="pulso-item">
-      <div class="pulso-rot">Imóveis</div>
-      <div class="pulso-val">{len(dados)}</div>
-    </div>
-    <div class="pulso-item{' destaque' if novos else ''}">
-      <div class="pulso-rot">Novos hoje</div>
-      <div class="pulso-val">{novos}</div>
-    </div>
-    <div class="pulso-item{' destaque' if quedas else ''}">
-      <div class="pulso-rot">Baixaram</div>
-      <div class="pulso-val">{quedas}</div>
-    </div>
-    <div class="pulso-item">
-      <div class="pulso-rot">Multi-fonte</div>
-      <div class="pulso-val">{multi}</div>
-    </div>
-    <div class="pulso-item">
-      <div class="pulso-rot">Mediana R$/m²</div>
-      <div class="pulso-val">{f'{med_m2:.0f}' if med_m2 else '—'}</div>
-    </div>
-    <div class="pulso-item">
-      <div class="pulso-rot">Faixa</div>
-      <div class="pulso-val">{_fmt_preco(min(precos)) if precos else '—'}
-        <small>a {_fmt_preco(max(precos)) if precos else '—'}</small></div>
-    </div>
-  </section>
+  <!-- Desenhado em JS: os números mudam com o escopo (meus bairros / todos),
+       e um pulso fixo diria "19 imóveis" numa tela mostrando 45. -->
+  <section class="pulso" id="pulso" aria-label="Resumo da busca"></section>
+
+  <div class="escopo" role="group" aria-label="Bairros exibidos">
+    <button class="chip-escopo" id="e-meus" type="button" aria-pressed="true">
+      Meus bairros <span class="chip-n" id="n-meus"></span></button>
+    <button class="chip-escopo" id="e-todos" type="button" aria-pressed="false">
+      Todos os bairros <span class="chip-n" id="n-todos"></span></button>
+  </div>
 
   <div class="barra-filtros" id="barra-filtros">
     <button class="btn-filtros" id="btn-filtros" type="button"
@@ -385,7 +370,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   <nav class="abas" role="tablist">
     <button class="aba" id="aba-imoveis" role="tab" aria-selected="true"
             aria-controls="painel-imoveis" type="button">
-      Imóveis <span class="aba-n">{len(dados)}</span></button>
+      Imóveis <span class="aba-n" id="n-aba-imoveis">{len(dados)}</span></button>
     <button class="aba" id="aba-fontes" role="tab" aria-selected="false"
             aria-controls="painel-fontes" type="button">
       Fontes <span class="aba-n">{len(rendimento or [])}</span></button>
@@ -467,8 +452,17 @@ function faixa(hist){{
     <circle cx="${{W}}" cy="${{y(p[n-1])}}" r="1.8" fill="${{cor}}"/></svg>`;
 }}
 
-/* ---------- filtros ---------- */
+/* ---------- escopo de bairros ----------
+   O recorte de bairros é do usuário, não do robô: a coleta cobre a cidade
+   inteira e o arquivo carrega TUDO. Trocar de escopo aqui é instantâneo --
+   regerar o dashboard para ver o resto significaria esperar a próxima
+   rodada. O selo de sugestão não muda: continua só nos preferidos. */
 const el = id => document.getElementById(id);
+let escopo = 'meus';
+
+function noEscopo(d){{ return escopo === 'todos' || d.noRecorte; }}
+
+/* ---------- filtros ---------- */
 const selCidade = el('f-cidade'), selBairro = el('f-bairro'), selQuartos = el('f-quartos');
 const selOrdem = el('f-ordem'), inpMin = el('f-min'), inpMax = el('f-max'), inpBusca = el('f-busca');
 const chips = {{novos: el('c-novos'), quedas: el('c-quedas'), multi: el('c-multi')}};
@@ -479,9 +473,9 @@ const chips = {{novos: el('c-novos'), quedas: el('c-quedas'), multi: el('c-multi
 
 function preencherBairros(){{
   const cid = selCidade.value, atual = selBairro.value;
-  const escopo = cid ? DADOS.filter(d => d.cidade === cid) : DADOS;
+  const visiveis = DADOS.filter(d => noEscopo(d) && (!cid || d.cidade === cid));
   selBairro.innerHTML = '<option value="">Bairro: todos</option>';
-  [...new Set(escopo.map(d => d.bairro).filter(Boolean))].sort().forEach(b => {{
+  [...new Set(visiveis.map(d => d.bairro).filter(Boolean))].sort().forEach(b => {{
     const o = document.createElement('option'); o.value = o.textContent = b; selBairro.appendChild(o);
   }});
   if ([...selBairro.options].some(o => o.value === atual)) selBairro.value = atual;
@@ -504,6 +498,7 @@ function filtrar(){{
   const soMulti = chips.multi.getAttribute('aria-pressed') === 'true';
 
   return DADOS.filter(d => {{
+    if (!noEscopo(d)) return false;
     if (soNovos && !d.novo) return false;
     if (soQuedas && !d.queda) return false;
     if (soMulti && d.qtdFontes < 2) return false;
@@ -537,6 +532,57 @@ function ordenar(lista){{
     ((b.score ?? 0) - (a.score ?? 0)) ||
     (b.novo - a.novo) || ((a.preco ?? 1e9) - (b.preco ?? 1e9)));
 }}
+
+/* ---------- pulso ---------- */
+const pulso = el('pulso');
+const fmtBRL = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR',
+  {{maximumFractionDigits:0}});
+
+function pintarPulso(){{
+  const base = DADOS.filter(noEscopo);
+  const novos = base.filter(d => d.novo).length;
+  const quedas = base.filter(d => d.queda).length;
+  const multi = base.filter(d => d.qtdFontes > 1).length;
+  const m2 = base.map(d => d.precoM2).filter(v => v != null).sort((a,b) => a-b);
+  const mediana = m2.length ? m2[Math.floor(m2.length/2)].toFixed(0) : '—';
+  const precos = base.map(d => d.preco).filter(v => v != null);
+  const faixa = precos.length
+    ? `${{fmtBRL(Math.min(...precos))}}<small>a ${{fmtBRL(Math.max(...precos))}}</small>`
+    : '—';
+
+  const item = (rot, val, destaque) =>
+    `<div class="pulso-item${{destaque ? ' destaque' : ''}}">
+       <div class="pulso-rot">${{rot}}</div><div class="pulso-val">${{val}}</div></div>`;
+
+  // o contador da aba acompanha o escopo: dizer "54" com 16 na tela faria
+  // parecer que o filtro comeu imóvel
+  el('n-aba-imoveis').textContent = base.length;
+
+  pulso.innerHTML =
+    item('Imóveis', base.length) +
+    item('Novos hoje', novos, novos > 0) +
+    item('Baixaram', quedas, quedas > 0) +
+    item('Multi-fonte', multi) +
+    item('Mediana R$/m²', mediana) +
+    item('Faixa', faixa);
+}}
+
+const btnMeus = el('e-meus'), btnTodos = el('e-todos');
+el('n-meus').textContent = DADOS.filter(d => d.noRecorte).length;
+el('n-todos').textContent = DADOS.length;
+
+function trocarEscopo(novo){{
+  escopo = novo;
+  btnMeus.setAttribute('aria-pressed', String(novo === 'meus'));
+  btnTodos.setAttribute('aria-pressed', String(novo === 'todos'));
+  // a lista de bairros do filtro acompanha o escopo, senão sobra opção que
+  // não seleciona nada
+  preencherBairros();
+  pintarPulso();
+  render();
+}}
+btnMeus.addEventListener('click', () => trocarEscopo('meus'));
+btnTodos.addEventListener('click', () => trocarEscopo('todos'));
 
 /* ---------- render ---------- */
 const lista = el('lista'), contagem = el('contagem');
@@ -621,9 +667,10 @@ function render(){{
   gravarUrl();
   contarFiltros();
   const res = ordenar(filtrar());
-  contagem.textContent = res.length === DADOS.length
+  const base = DADOS.filter(noEscopo).length;
+  contagem.textContent = res.length === base
     ? `${{res.length}} imóveis`
-    : `${{res.length}} de ${{DADOS.length}} imóveis`;
+    : `${{res.length}} de ${{base}} imóveis`;
 
   lista.innerHTML = '';
   if (!res.length){{
@@ -796,6 +843,7 @@ function gravarUrl(){{
   const marcados = Object.entries(chips)
     .filter(([, c]) => c.getAttribute('aria-pressed') === 'true').map(([k]) => k);
   if (marcados.length) p.set('sinais', marcados.join(','));
+  if (escopo === 'todos') p.set('escopo', 'todos');
   if (abas.fontes.getAttribute('aria-selected') === 'true') p.set('aba', 'fontes');
   const s = p.toString();
   // Abrir por duplo clique (file://) ou de um data: URL dá origem nula, e aí
@@ -809,6 +857,12 @@ function gravarUrl(){{
 
 function lerUrl(){{
   const p = new URLSearchParams(location.search);
+  // escopo antes de tudo: ele define quais bairros existem para escolher
+  if (p.get('escopo') === 'todos'){{
+    escopo = 'todos';
+    btnMeus.setAttribute('aria-pressed', 'false');
+    btnTodos.setAttribute('aria-pressed', 'true');
+  }}
   // cidade primeiro: a lista de bairros depende dela
   if (p.has('cidade')) selCidade.value = p.get('cidade');
   preencherBairros();
@@ -821,6 +875,7 @@ function lerUrl(){{
 }}
 
 lerUrl();
+pintarPulso();
 // Aberta de saída quando o link já traz recorte -- quem abre um link
 // filtrado precisa ver O QUE está filtrado --, e no desktop, onde a barra
 // cabe numa linha e esconder não economiza nada.

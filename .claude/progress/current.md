@@ -15,6 +15,10 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**20/08 (6):** botão "Meus bairros / Todos os bairros" no dashboard — o
+arquivo leva os 54 imóveis coletados e mostra 16 por padrão. Selo ★ segue
+restrito aos preferidos.
+
 **20/08 (5):** Chaves na Mão (Recife e Olinda) incluído, com custo total
 lido da página do imóvel; selo "Melhor achado" restrito aos bairros
 preferidos (agora 10, com Encruzilhada, Torreão, Rosarinho e Campo Grande).
