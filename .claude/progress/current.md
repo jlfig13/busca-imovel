@@ -15,6 +15,44 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**21/08 (2):** triagem no dashboard — favoritar, descartar e lixeira, mais o
+conserto de dois números que mentiam.
+
+- **Descartar e favoritar**, persistidos em `localStorage`. A chave é a **URL
+  do anúncio**, não o id do imóvel: `db.consolidar_imoveis()` apaga e recria a
+  tabela `imovel` a cada rodada, então o id de hoje não é o de amanhã e uma
+  lista chaveada por ele esqueceria tudo em 12 horas. O imóvel conta como
+  marcado se QUALQUER anúncio dele estiver na lista — assim sobrevive a
+  regrupamento e a anúncio que sai de um portal e volta por outro.
+- **Lixeira** como quarto escopo, ao lado de Favoritos. Descartado sai das
+  listas de bairro e das contagens; favorito continua onde está, com a
+  estrela acesa. "Desfazer" aparece no lugar do card que saiu.
+- **Contagem dos chips era fixa e global** (interpolada em Python sobre a
+  lista inteira): com "Minhas preferências" ligado, o chip dizia "Novos 4"
+  numa tela com 1, enquanto o pulso dizia 1. Agora sai do mesmo cálculo do
+  pulso. Era este o pedido de "o filtro precisa seguir o botão dos
+  preferidos" — os *filtros* já seguiam (`filtrar()` chama `noEscopo`
+  primeiro); o que mentia era o número.
+- **"Novos hoje" e "Baixaram" viraram botões.** O número existia no topo e o
+  filtro correspondente morava dentro do painel recolhido: dava para ver que
+  três baixaram e não havia como chegar nos três. Clicar liga o chip e rola
+  até a lista.
+- **`queda` entrou na ordenação** (logo depois de `novo`) e o selo passou a
+  levar o percentual junto do valor. Sobre a foto agora cabem **no máximo
+  dois selos**, por prioridade (queda > novo > melhor achado): três
+  empilhados em 412px não destacavam nada.
+- Achado no caminho, com a tela na mão: quatro botões de escopo estouravam a
+  largura no Poco X6 Pro e "Lixeira" saía pela direita. Agora quebram em 2x2
+  abaixo de 430px. E "1 imóveis" na contagem virou concordância de verdade.
+
+Limite aceito (decisão do usuário): triagem é **por aparelho**. Sem servidor
+não há como sincronizar, e commitar a lista no repositório daria conflito a
+cada rodada.
+
+Verificado em Chromium real (412px, `is_mobile`), não só em teste unitário:
+descartar → desfazer → lixeira → restaurar, favoritar dentro e fora do
+escopo, persistência após reload, e nenhuma rolagem horizontal.
+
 **21/08 (1):** postura de coleta alinhada ao que o projeto diz fazer, antes
 de falar do projeto em público. Quatro mudanças:
 
@@ -119,8 +157,6 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Aberto no backlog
 
 - [ ] Decidir o corte de fontes (acima).
-- [ ] Favoritos / descartados no dashboard — precisa de armazenamento local,
-      já que o arquivo é regerado a cada rodada.
 - [ ] Alerta ativo — hoje é preciso abrir o dashboard para saber que algo
       baixou de preço.
 
@@ -129,7 +165,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron 2x/dia: 11:13 e 21:13 UTC (08:13 e 18:13 BRT) + disparo manual.
-- 171 testes, ~3s.
+- 178 testes, ~3s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

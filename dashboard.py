@@ -173,10 +173,15 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
         preco = i.get("preco_min") or i.get("custo_mensal_total") or i.get("preco")
 
         queda = None
+        queda_pct = None
         if len(hist) >= 2 and preco is not None:
             anterior = next((h[1] for h in reversed(hist[:-1]) if h[1] is not None), None)
             if anterior and anterior > preco:
                 queda = round(anterior - preco, 2)
+                # O valor absoluto sozinho não diz se a queda é notícia: R$ 100
+                # em 1.500 é outra conversa que R$ 100 em 2.500. O selo mostra
+                # os dois, e é o percentual que decide se vale abrir.
+                queda_pct = round(100 * queda / anterior)
 
         dados.append({
             "titulo": i.get("titulo") or "Apartamento",
@@ -204,6 +209,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
             "noRecorte": bool(i.get("noRecorte", True)),
             "historico": hist,
             "queda": queda,
+            "quedaPct": queda_pct,
         })
 
     # Nota de afinidade: quem combina com o perfil vai para o topo com selo.
@@ -211,9 +217,6 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     # a partir de uma cópia do banco, em teste de layout) traga a sugestão.
     afinidade.pontuar(dados)
 
-    novos = sum(1 for d in dados if d["novo"])
-    quedas = sum(1 for d in dados if d["queda"])
-    multi = sum(1 for d in dados if d["qtdFontes"] > 1)
     precos = [d["preco"] for d in dados if d["preco"]]
     mediana_m2 = sorted(d["precoM2"] for d in dados if d["precoM2"])
     med_m2 = mediana_m2[len(mediana_m2) // 2] if mediana_m2 else None
@@ -310,11 +313,15 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
        e um pulso fixo diria "19 imóveis" numa tela mostrando 45. -->
   <section class="pulso" id="pulso" aria-label="Resumo da busca"></section>
 
-  <div class="escopo" role="group" aria-label="Recorte de bairros">
+  <div class="escopo" role="group" aria-label="Recorte da lista">
     <button class="chip-escopo" id="e-meus" type="button" aria-pressed="true">
       Minhas preferências <span class="chip-n" id="n-meus"></span></button>
     <button class="chip-escopo" id="e-outros" type="button" aria-pressed="false">
       Outros bairros <span class="chip-n" id="n-outros"></span></button>
+    <button class="chip-escopo" id="e-favoritos" type="button" aria-pressed="false">
+      {ic['estrela']} Favoritos <span class="chip-n" id="n-favoritos"></span></button>
+    <button class="chip-escopo" id="e-lixeira" type="button" aria-pressed="false">
+      {ic['lixeira']} Lixeira <span class="chip-n" id="n-lixeira"></span></button>
   </div>
 
   <div class="barra-filtros" id="barra-filtros">
@@ -328,12 +335,14 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   </div>
 
   <div class="filtros" id="filtros" hidden>
+    <!-- Contagem preenchida em JS: ela precisa acompanhar o escopo e os
+         descartes. Fixa no HTML, o chip dizia "Novos 4" numa tela com 1. -->
     <button class="chip" id="c-novos" type="button" aria-pressed="false">
-      Novos <span class="chip-n">{novos}</span></button>
+      Novos <span class="chip-n" id="cn-novos"></span></button>
     <button class="chip" id="c-quedas" type="button" aria-pressed="false">
-      Baixaram <span class="chip-n">{quedas}</span></button>
+      Baixaram <span class="chip-n" id="cn-quedas"></span></button>
     <button class="chip" id="c-multi" type="button" aria-pressed="false">
-      Confirmados <span class="chip-n">{multi}</span></button>
+      Confirmados <span class="chip-n" id="cn-multi"></span></button>
 
     <label class="campo">{ic['local']}
       <select id="f-cidade" aria-label="Cidade"><option value="">Cidade: todas</option></select>
@@ -394,7 +403,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 const DADOS = {json_dados};
 const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
 const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto', 'seta',
-                        'estrela')}, ensure_ascii=False)};
+                        'estrela', 'descartar', 'restaurar', 'lixeira')}, ensure_ascii=False)};
 
 /* ---------- tema ---------- */
 const raiz = document.documentElement;
@@ -465,7 +474,62 @@ function faixa(hist){{
 const el = id => document.getElementById(id);
 let escopo = 'meus';
 
-function noEscopo(d){{ return escopo === 'outros' ? !d.noRecorte : d.noRecorte; }}
+/* ---------- triagem: favoritos e descartados ----------
+   A chave é a URL do ANÚNCIO, não o id do imóvel. db.consolidar_imoveis()
+   apaga e reconstrói a tabela `imovel` a cada rodada -- os agrupamentos mudam
+   quando anúncios entram e saem --, então o id de hoje não é o de amanhã, e
+   uma lista chaveada por ele esqueceria tudo em 12 horas.
+
+   O imóvel conta como marcado se QUALQUER anúncio dele estiver na lista. Isso
+   resolve de graça os dois casos que quebrariam a versão ingênua: o imóvel
+   ganhar uma segunda fonte depois de descartado (regrupamento), e o anúncio
+   sumir de um portal e voltar por outro.
+
+   localStorage é por navegador: descartar no celular não reflete no desktop.
+   Sem servidor não há como fazer diferente, e a alternativa (commitar a lista
+   no repositório a cada rodada) daria conflito garantido. O try/catch é o
+   mesmo cuidado do tema -- em file:// o acesso pode levantar exceção, e a
+   triagem não pode custar o dashboard. */
+function lerLista(chave){{
+  try {{
+    const cru = localStorage.getItem(chave);
+    return cru ? JSON.parse(cru) : {{}};
+  }} catch (e) {{ return {{}}; }}
+}}
+function gravarLista(chave, obj){{
+  try {{ localStorage.setItem(chave, JSON.stringify(obj)); }} catch (e) {{}}
+}}
+
+let DESCARTADOS = lerLista('descartados');
+let FAVORITOS = lerLista('favoritos');
+
+const chavesDe = d => (d.anuncios || []).map(a => a.url).filter(Boolean);
+const marcado = (d, lista) => chavesDe(d).some(u => u in lista);
+const descartado = d => marcado(d, DESCARTADOS);
+const favorito = d => marcado(d, FAVORITOS);
+
+function alternar(d, chave, lista){{
+  const urls = chavesDe(d);
+  const ligado = urls.some(u => u in lista);
+  // Grava TODAS as urls do imóvel, não só a primeira: amanhã o agrupamento
+  // pode quebrar em dois, e cada pedaço precisa lembrar da decisão.
+  if (ligado) urls.forEach(u => delete lista[u]);
+  else urls.forEach(u => {{ lista[u] = new Date().toISOString().slice(0,10); }});
+  gravarLista(chave, lista);
+  return !ligado;
+}}
+
+/* Descartado sai das duas listas de bairro E das contagens -- senão o número
+   do topo volta a discordar do que está na tela, que é o problema que a
+   contagem dinâmica veio resolver. Favorito NÃO some das listas: continua
+   onde está, com a estrela acesa. */
+function noEscopo(d){{
+  if (escopo === 'lixeira') return descartado(d);
+  if (descartado(d)) return false;
+  if (escopo === 'favoritos') return favorito(d);
+  if (escopo === 'outros') return !d.noRecorte;
+  return d.noRecorte;
+}}
 
 /* ---------- filtros ---------- */
 const selCidade = el('f-cidade'), selBairro = el('f-bairro'), selQuartos = el('f-quartos');
@@ -490,6 +554,7 @@ preencherBairros();
 Object.values(chips).forEach(c => c.addEventListener('click', () => {{
   c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
   render();
+  pintarPulso();  // o pulso espelha os chips: os dois têm de contar a mesma coisa
 }}));
 
 function filtrar(){{
@@ -531,11 +596,16 @@ function ordenar(lista){{
   // Sugestão: nota de afinidade primeiro (config.PERFIL), empate desfeito
   // por novidade e preço. Era "novo primeiro" puro -- que colocava na frente
   // qualquer anúncio recém-publicado, inclusive o que não serve.
+  // 'queda' entra logo depois de 'novo': baixar de preço é a outra notícia
+  // do dia, e sem isto um imóvel que caiu R$ 300 podia parar no meio da
+  // lista -- o selo existia e ninguém rolava até ele.
   return c.sort((a,b) =>
     ((b.atende ? 1 : 0) - (a.atende ? 1 : 0)) ||
     ((b.melhor ? 1 : 0) - (a.melhor ? 1 : 0)) ||
     ((b.score ?? 0) - (a.score ?? 0)) ||
-    (b.novo - a.novo) || ((a.preco ?? 1e9) - (b.preco ?? 1e9)));
+    (b.novo - a.novo) ||
+    ((b.queda ? 1 : 0) - (a.queda ? 1 : 0)) ||
+    ((a.preco ?? 1e9) - (b.preco ?? 1e9)));
 }}
 
 /* ---------- pulso ---------- */
@@ -559,47 +629,113 @@ function pintarPulso(){{
     `<div class="pulso-item${{destaque ? ' destaque' : ''}}">
        <div class="pulso-rot">${{rot}}</div><div class="pulso-val">${{val}}</div></div>`;
 
+  /* "Novos hoje" e "Baixaram" são os dois números que respondem "o que mudou
+     desde ontem" -- e eram os únicos sem resposta: o contador dizia 3 e não
+     havia como chegar nos três, porque o filtro correspondente mora dentro do
+     painel recolhido. Aqui o número É o filtro. */
+  const acao = (rot, val, chip) =>
+    `<button class="pulso-item acionavel" type="button" data-chip="${{chip}}"
+             aria-pressed="${{chips[chip].getAttribute('aria-pressed')}}">
+       <div class="pulso-rot">${{rot}}</div><div class="pulso-val">${{val}}</div></button>`;
+
   // o contador da aba acompanha o escopo: dizer "54" com 16 na tela faria
   // parecer que o filtro comeu imóvel
   el('n-aba-imoveis').textContent = base.length;
 
   pulso.innerHTML =
     item('Imóveis', base.length) +
-    item('Novos hoje', novos, novos > 0) +
-    item('Baixaram', quedas, quedas > 0) +
+    acao('Novos hoje', novos, 'novos') +
+    acao('Baixaram', quedas, 'quedas') +
     item('Multi-fonte', multi) +
     item('Mediana R$/m²', mediana) +
     item('Faixa', faixa);
+
+  pulso.querySelectorAll('.acionavel').forEach(b =>
+    b.addEventListener('click', () => ligarChip(b.dataset.chip)));
+
+  // as contagens dos chips vivem na mesma base do pulso: um número só,
+  // calculado num lugar só
+  el('cn-novos').textContent = novos;
+  el('cn-quedas').textContent = quedas;
+  el('cn-multi').textContent = multi;
 }}
 
-const btnMeus = el('e-meus'), btnOutros = el('e-outros');
-el('n-meus').textContent = DADOS.filter(d => d.noRecorte).length;
-el('n-outros').textContent = DADOS.filter(d => !d.noRecorte).length;
+/* Liga (ou desliga) um chip e leva o olho até a lista. Sem a rolagem, no
+   celular o clique no número não parece ter feito nada: o efeito acontece
+   abaixo da dobra. */
+function ligarChip(nome){{
+  const c = chips[nome];
+  c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+  render();
+  pintarPulso();
+  el('painel-imoveis').scrollIntoView({{behavior: 'smooth', block: 'start'}});
+}}
+
+const BOTOES_ESCOPO = {{
+  meus: el('e-meus'), outros: el('e-outros'),
+  favoritos: el('e-favoritos'), lixeira: el('e-lixeira'),
+}};
+
+/* Os contadores das abas descontam o que está na lixeira -- exceto o da
+   própria lixeira. Deixar o descartado somando em "Minhas preferências"
+   faria a aba prometer imóveis que a lista não mostra. */
+function pintarEscopo(){{
+  const vivos = DADOS.filter(d => !descartado(d));
+  el('n-meus').textContent = vivos.filter(d => d.noRecorte).length;
+  el('n-outros').textContent = vivos.filter(d => !d.noRecorte).length;
+  el('n-favoritos').textContent = vivos.filter(favorito).length;
+  el('n-lixeira').textContent = DADOS.filter(descartado).length;
+}}
 
 function trocarEscopo(novo){{
   escopo = novo;
-  btnMeus.setAttribute('aria-pressed', String(novo === 'meus'));
-  btnOutros.setAttribute('aria-pressed', String(novo === 'outros'));
+  Object.entries(BOTOES_ESCOPO).forEach(([k, b]) =>
+    b.setAttribute('aria-pressed', String(k === novo)));
   // a lista de bairros do filtro acompanha o escopo, senão sobra opção que
   // não seleciona nada
   preencherBairros();
+  pintarEscopo();
   pintarPulso();
   render();
 }}
-btnMeus.addEventListener('click', () => trocarEscopo('meus'));
-btnOutros.addEventListener('click', () => trocarEscopo('outros'));
+Object.entries(BOTOES_ESCOPO).forEach(([k, b]) =>
+  b.addEventListener('click', () => trocarEscopo(k)));
 
 /* ---------- render ---------- */
 const lista = el('lista'), contagem = el('contagem');
 
 /* Selos de ação (novo, queda) vão sobre a foto -- é o primeiro lugar
    onde o olho pousa no card. Os de contexto ficam no corpo. */
+/* No máximo DOIS selos sobre a foto, por prioridade. Três empilhados em
+   412px de largura não destacam nada -- viram uma faixa de etiquetas que o
+   olho pula inteira. A ordem é a da urgência: o que mudou hoje (queda, novo)
+   vem antes do que é verdade desde ontem (melhor achado).
+
+   A queda leva o percentual junto: R$ 100 em 1.500 é outra conversa que
+   R$ 100 em 2.500, e o valor sozinho não deixa decidir se vale abrir. */
 function selosFoto(d){{
   const s = [];
-  if (d.melhor) s.push('<span class="selo selo-melhor">★ Melhor achado</span>');
+  if (d.queda) s.push(`<span class="selo selo-queda">Baixou ${{brl(d.queda)}}${{
+    d.quedaPct ? ' · ' + d.quedaPct + '%' : ''}}</span>`);
   if (d.novo) s.push('<span class="selo selo-novo">Novo</span>');
-  if (d.queda) s.push(`<span class="selo selo-queda">Baixou ${{brl(d.queda)}}</span>`);
-  return s.join('');
+  if (d.melhor) s.push('<span class="selo selo-melhor">★ Melhor achado</span>');
+  return s.slice(0, 2).join('');
+}}
+
+/* Favoritar e descartar. Ficam sobre a foto, no canto oposto aos selos. */
+function acoesCard(d){{
+  const fav = favorito(d);
+  if (escopo === 'lixeira'){{
+    return `<div class="acoes-card">
+      <button class="btn-acao restaurar" type="button" title="Tirar da lixeira"
+              aria-label="Restaurar imóvel">${{IC.restaurar}}</button></div>`;
+  }}
+  return `<div class="acoes-card">
+    <button class="btn-acao favorito" type="button" aria-pressed="${{fav}}"
+            title="${{fav ? 'Tirar dos favoritos' : 'Favoritar'}}"
+            aria-label="Favoritar imóvel">${{IC.estrela}}</button>
+    <button class="btn-acao descartar" type="button" title="Descartar"
+            aria-label="Descartar imóvel">${{IC.descartar}}</button></div>`;
 }}
 
 function selos(d){{
@@ -636,7 +772,7 @@ function capa(d){{
        <span class="foto-conta">1/${{fotos.length}}</span>`
     : '';
   return `<div class="foto${{fotos.length ? '' : ' sem-foto'}}">${{vazio}}${{img}}${{nav}}
-    <div class="foto-selos">${{selosFoto(d)}}</div></div>`;
+    <div class="foto-selos">${{selosFoto(d)}}</div>${{acoesCard(d)}}</div>`;
 }}
 
 /* Troca de foto no card já montado. */
@@ -668,25 +804,89 @@ function ficha(d){{
   return p.join('');
 }}
 
+/* Descartar sem rede de segurança é caro de usar: na dúvida, ninguém
+   descarta, e a lista volta a acumular. O "Desfazer" aparece NO LUGAR do card
+   que saiu -- não num toast de canto -- porque é onde o olho já está. Ele
+   sobrevive até o próximo render, que é o tempo natural da decisão. */
+function ligarTriagem(card, d){{
+  const bFav = card.querySelector('.btn-acao.favorito');
+  if (bFav) bFav.addEventListener('click', e => {{
+    e.stopPropagation();
+    const ligado = alternar(d, 'favoritos', FAVORITOS);
+    bFav.setAttribute('aria-pressed', String(ligado));
+    bFav.title = ligado ? 'Tirar dos favoritos' : 'Favoritar';
+    pintarEscopo();
+    // No escopo "Favoritos", desmarcar tem de tirar o card da tela na hora --
+    // senão fica um card órfão que some só no próximo render.
+    if (escopo === 'favoritos' && !ligado) render();
+  }});
+
+  const bDesc = card.querySelector('.btn-acao.descartar');
+  if (bDesc) bDesc.addEventListener('click', e => {{
+    e.stopPropagation();
+    alternar(d, 'descartados', DESCARTADOS);
+    trocarPorDesfazer(card, d);
+  }});
+
+  const bRest = card.querySelector('.btn-acao.restaurar');
+  if (bRest) bRest.addEventListener('click', e => {{
+    e.stopPropagation();
+    alternar(d, 'descartados', DESCARTADOS);
+    pintarEscopo(); pintarPulso(); render();
+  }});
+}}
+
+function trocarPorDesfazer(card, d){{
+  const aviso = document.createElement('div');
+  aviso.className = 'desfazer';
+  aviso.innerHTML = `<span>Descartado: <b>${{esc(d.titulo)}}</b></span>
+    <button class="btn-desfazer" type="button">Desfazer</button>`;
+  card.replaceWith(aviso);
+  pintarEscopo();
+  pintarPulso();
+  atualizarContagem();
+  aviso.querySelector('.btn-desfazer').addEventListener('click', () => {{
+    alternar(d, 'descartados', DESCARTADOS);
+    pintarEscopo(); pintarPulso(); render();
+  }});
+}}
+
+/* A contagem da barra é recalculada fora do render porque o descarte tira um
+   card sem redesenhar a lista -- e o número precisa acompanhar.
+   O plural aparecia como "1 imóveis": passava despercebido numa lista de 19,
+   mas a lixeira quase sempre tem um item só. */
+const contar = (n, total) => {{
+  // na forma "1 de 11" quem manda no plural é o TOTAL, não o recorte
+  const palavra = v => v === 1 ? 'imóvel' : 'imóveis';
+  return n === total ? `${{n}} ${{palavra(n)}}` : `${{n}} de ${{total}} ${{palavra(total)}}`;
+}};
+
+function atualizarContagem(){{
+  contagem.textContent = contar(filtrar().length, DADOS.filter(noEscopo).length);
+}}
+
 function render(){{
   gravarUrl();
   contarFiltros();
   const res = ordenar(filtrar());
-  const base = DADOS.filter(noEscopo).length;
-  contagem.textContent = res.length === base
-    ? `${{res.length}} imóveis`
-    : `${{res.length}} de ${{base}} imóveis`;
+  contagem.textContent = contar(res.length, DADOS.filter(noEscopo).length);
 
   lista.innerHTML = '';
   if (!res.length){{
-    lista.innerHTML = `<div class="estado-vazio">${{IC.vazio}}<div>Nenhum imóvel com esses filtros.</div></div>`;
+    // A mensagem tem de dizer o que fazer, não só que está vazio: uma lixeira
+    // vazia e um filtro estreito demais parecem a mesma tela sem isto.
+    const vazio = {{
+      lixeira: 'Nada descartado ainda. O ✕ sobre a foto tira o imóvel da lista.',
+      favoritos: 'Nenhum favorito ainda. A estrela sobre a foto marca o que você gostou.',
+    }}[escopo] || 'Nenhum imóvel com esses filtros.';
+    lista.innerHTML = `<div class="estado-vazio">${{IC.vazio}}<div>${{vazio}}</div></div>`;
     return;
   }}
 
   const frag = document.createDocumentFragment();
   for (const d of res){{
     const card = document.createElement('article');
-    card.className = 'imovel';
+    card.className = 'imovel' + (descartado(d) ? ' descartado' : '');
     const local = [d.bairro, d.cidade].filter(Boolean).join(', ');
     const varias = d.anuncios.length > 1;
 
@@ -722,6 +922,7 @@ function render(){{
       </div>`;
 
     ligarGaleria(card, d.fotos || []);
+    ligarTriagem(card, d);
 
     // Progressive disclosure: só o imóvel com mais de uma oferta expande, e
     // a expansão vive DENTRO do card -- solta embaixo, parecia de outro
@@ -848,7 +1049,7 @@ function gravarUrl(){{
   const marcados = Object.entries(chips)
     .filter(([, c]) => c.getAttribute('aria-pressed') === 'true').map(([k]) => k);
   if (marcados.length) p.set('sinais', marcados.join(','));
-  if (escopo === 'outros') p.set('escopo', 'outros');
+  if (escopo !== 'meus') p.set('escopo', escopo);
   if (abas.fontes.getAttribute('aria-selected') === 'true') p.set('aba', 'fontes');
   const s = p.toString();
   // Abrir por duplo clique (file://) ou de um data: URL dá origem nula, e aí
@@ -863,10 +1064,11 @@ function gravarUrl(){{
 function lerUrl(){{
   const p = new URLSearchParams(location.search);
   // escopo antes de tudo: ele define quais bairros existem para escolher
-  if (p.get('escopo') === 'outros'){{
-    escopo = 'outros';
-    btnMeus.setAttribute('aria-pressed', 'false');
-    btnOutros.setAttribute('aria-pressed', 'true');
+  const esc0 = p.get('escopo');
+  if (esc0 && BOTOES_ESCOPO[esc0]){{
+    escopo = esc0;
+    Object.entries(BOTOES_ESCOPO).forEach(([k, b]) =>
+      b.setAttribute('aria-pressed', String(k === esc0)));
   }}
   // cidade primeiro: a lista de bairros depende dela
   if (p.has('cidade')) selCidade.value = p.get('cidade');
@@ -880,6 +1082,7 @@ function lerUrl(){{
 }}
 
 lerUrl();
+pintarEscopo();
 pintarPulso();
 // Aberta de saída quando o link já traz recorte -- quem abre um link
 // filtrado precisa ver O QUE está filtrado --, e no desktop, onde a barra
