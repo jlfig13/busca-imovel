@@ -2,6 +2,57 @@
 
 ---
 
+## Fase 6 — Triagem no dashboard (21/08/2026)
+
+Fecha o item que estava aberto desde a Fase 4 ("Favoritos / descartados no
+dashboard — precisa de armazenamento local, já que o arquivo é regerado a
+cada rodada").
+
+- [x] **Descartar, favoritar e lixeira.** A decisão que define o resto:
+  a chave é a **URL do anúncio**, não o id do imóvel. `db.consolidar_imoveis()`
+  faz `DELETE FROM imovel` e reconstrói a tabela a cada rodada — os
+  agrupamentos mudam quando anúncios entram e saem —, então o id não
+  sobrevive 12 horas. Um imóvel conta como marcado quando QUALQUER anúncio
+  dele está na lista, o que resolve de graça dois casos que quebrariam a
+  versão ingênua: ganhar uma segunda fonte depois de descartado, e sumir de
+  um portal para voltar por outro.
+  *Descartado:* guardar a lista no repositório. Daria sincronia entre
+  aparelhos, e daria conflito de merge a cada rodada — o banco já é binário
+  e commitado 2x/dia. Aceito o limite: triagem é por navegador.
+  Descartado sai das listas de bairro E das contagens; favorito continua na
+  lista, com a estrela acesa. "Desfazer" no lugar do card que saiu, não em
+  toast de canto: é onde o olho já está, e sem rede de segurança ninguém
+  descarta na dúvida — que era o objetivo da funcionalidade.
+
+- [x] **A contagem dos chips seguia a lista inteira, não o escopo.** "Novos",
+  "Baixaram" e "Confirmados" tinham o número interpolado em Python sobre
+  todos os imóveis e nunca mudavam, enquanto o pulso recalculava por escopo.
+  Com "Minhas preferências" ligado, um dizia 4 e o outro 1. Agora saem do
+  mesmo cálculo. Nota para quem for ler o pedido original: os *filtros* já
+  respeitavam o escopo (`filtrar()` chama `noEscopo()` antes de tudo) — o
+  defeito era só no número exibido.
+
+- [x] **O número que informava não agia.** "Novos hoje" e "Baixaram" ficavam
+  no pulso, no topo, e o chip que filtra por eles dentro do painel recolhido:
+  dava para ler "3 baixaram" e não havia caminho até os três. Viraram botões
+  que ligam o chip e rolam para a lista.
+
+- [x] **Destaque do que mudou.** `queda` entrou no desempate da ordenação,
+  logo depois de `novo` — antes um imóvel que caiu R$ 300 podia parar no meio
+  da lista com o selo que ninguém rolava para ver. O selo passou a mostrar o
+  percentual junto do valor (R$ 100 em 1.500 é outra conversa que em 2.500).
+  E os selos sobre a foto foram limitados a **dois**, por prioridade
+  (queda > novo > melhor achado): três empilhados em 412px viram uma faixa de
+  etiquetas que o olho pula inteira.
+
+- [x] **Dois defeitos achados só com a tela na mão** (Chromium a 412px, com
+  `is_mobile` para o `@media (hover:none)` valer): os quatro botões de escopo
+  estouravam a largura e "Lixeira" saía pela direita — agora quebram em 2x2
+  abaixo de 430px; e a contagem dizia "1 imóveis", que passava despercebido
+  numa lista de 19 e é a regra na lixeira.
+
+---
+
 ## Fase 5 — Postura de coleta (21/08/2026)
 
 Motivada por uma pergunta simples: dá para falar deste projeto em público sem
@@ -301,9 +352,8 @@ que o código desminta o texto? A auditoria achou três lugares onde desmentia.
   Josinildo, Rogério, Newville, Sérgio Rodrigues, Cristina Mirele, Luiza
   Parizi, Belchior Alvarez. Antes de cortar, checar se o filtro de preço da
   busca está apertando demais nas pequenas.
-- [ ] **Favoritos / descartados** — marcar imóvel no dashboard e o estado
-  sobreviver à próxima rodada. Precisa de armazenamento local (o arquivo é
-  regerado todo dia).
+- [x] **Favoritos / descartados** — feito na Fase 6, chaveado pela URL do
+  anúncio (o id do imóvel não sobrevive à rodada seguinte).
 - [ ] **Alerta ativo** — hoje é preciso abrir o dashboard para saber que algo
   baixou de preço. Uma notificação no dia da queda é o que fecha o ciclo.
 
@@ -409,7 +459,7 @@ que o código desminta o texto? A auditoria achou três lugares onde desmentia.
 - [x] **`VACUUM` + poda de inativos** — `db.manutencao()` roda toda rodada;
   o `VACUUM` só no domingo (reescreve o arquivo inteiro, não vale diário).
 - [x] **Filtros na URL** — feito na Fase 4.
-- [ ] **Favoritos / descartados** — segue aberto.
+- [x] **Favoritos / descartados** — feito na Fase 6.
 
 Testes: **111 → 121**. Rodada: 18 fontes ativas, 72 anúncios, 50 imóveis.
 

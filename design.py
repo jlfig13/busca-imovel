@@ -236,6 +236,69 @@ a{color:inherit;}
 .pulso-val small{font-size:13px; font-weight:400; color:var(--tinta-suave); letter-spacing:0;}
 .pulso-item.destaque .pulso-val{color:var(--ocre);}
 
+/* ---------- triagem: favoritar e descartar ---------- */
+/* O dashboard é regerado a cada rodada, então a lista que só cresce é a de
+   imóveis que já foram avaliados e não servem. Sem uma forma de tirá-los da
+   frente, a leitura diária vira rolar por cima dos mesmos descartes.
+
+   Os dois botões ficam SOBRE a foto, no canto oposto aos selos: são ações
+   sobre o card inteiro, e no corpo brigariam com "Ver anúncio", que é a ação
+   principal. No celular (hover:none) ficam sempre visíveis -- esconder atrás
+   de hover num aparelho sem cursor é esconder para sempre. */
+.acoes-card{
+  position:absolute; top:9px; right:9px; display:flex; gap:6px;
+}
+.btn-acao{
+  width:30px; height:30px; padding:0; border:0; border-radius:8px;
+  cursor:pointer; display:grid; place-items:center;
+  background:rgba(13,17,20,.55); color:#fff;
+  backdrop-filter:blur(3px); opacity:0; transition:opacity .12s, background .12s;
+}
+.imovel:hover .btn-acao{opacity:1;}
+.btn-acao:hover{background:rgba(13,17,20,.8);}
+.btn-acao svg{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round;}
+/* Favorito ligado é estado, não hover: fica aceso sempre, e a estrela cheia
+   é o que distingue de longe na grade. */
+.btn-acao.favorito[aria-pressed="true"]{
+  opacity:1; background:var(--ocre); color:#fff;
+}
+.btn-acao.favorito[aria-pressed="true"] svg{fill:currentColor;}
+@media (hover:none){
+  .btn-acao{opacity:1; width:34px; height:34px;}
+}
+
+/* Card na lixeira: continua legível, mas não compete com a lista viva. */
+.imovel.descartado .foto{opacity:.55;}
+.imovel.descartado .imovel-titulo{color:var(--tinta-media);}
+
+/* Desfazer: a rede de segurança que faz o descarte ser barato de usar. Fica
+   no lugar do card que saiu, não num toast de canto -- o olho já está ali. */
+.desfazer{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:14px 16px; border:1px dashed var(--linha-forte); border-radius:var(--r);
+  background:var(--superficie-2); color:var(--tinta-media); font-size:13px;
+}
+.desfazer b{color:var(--tinta); font-weight:600;}
+.btn-desfazer{
+  border:0; background:transparent; cursor:pointer; padding:6px 10px;
+  border-radius:6px; color:var(--mar); font-family:var(--sans);
+  font-size:13px; font-weight:600;
+}
+.btn-desfazer:hover{background:var(--fundo);}
+
+/* Número do pulso que também é ação. Só os dois que respondem "o que mudou
+   desde ontem" viram botão -- o resto é leitura. Sem isto o contador diz
+   "3 baixaram" e não há como chegar nos três: era preciso abrir o painel de
+   filtros e lembrar que existe um chip lá dentro. */
+.pulso-item.acionavel{
+  border:0; border-left:1px solid var(--linha); background:transparent;
+  font:inherit; text-align:left; cursor:pointer; color:inherit;
+}
+.pulso-item.acionavel:hover .pulso-val{text-decoration:underline; text-underline-offset:3px;}
+.pulso-item.acionavel[aria-pressed="true"] .pulso-rot{color:var(--mar);}
+.pulso-item.acionavel[aria-pressed="true"] .pulso-val{color:var(--mar);}
+
 /* ---------- abas ---------- */
 /* Duas leituras diferentes do mesmo banco: o catálogo (o que alugar) e a
    operação (quais fontes ainda valem o tempo de runner). Misturar as duas
@@ -295,19 +358,26 @@ a{color:inherit;}
   margin-top:12px; font-family:var(--mono);
 }
 
-/* ---------- escopo de bairros ---------- */
-/* Dois estados exclusivos, lado a lado: é uma escolha, não um filtro que se
-   acumula com os outros. Por isso não usa .chip (que é multi-seleção). */
+/* ---------- escopo da lista ---------- */
+/* Estados exclusivos, lado a lado: é uma escolha, não um filtro que se
+   acumula com os outros. Por isso não usa .chip (que é multi-seleção).
+   São quatro: dois recortes de bairro, mais favoritos e lixeira.
+
+   flex-wrap não é enfeite: os quatro rótulos passam de 412px e, sem a quebra,
+   "Lixeira" saía pela direita da tela -- e rolagem horizontal no conteúdo é
+   inaceitável neste projeto. No celular eles se acomodam em duas linhas. */
 .escopo{
-  display:inline-flex; padding:3px; gap:3px; margin-top:2px;
-  background:var(--superficie-2); border-radius:10px;
+  display:inline-flex; flex-wrap:wrap; padding:3px; gap:3px; margin-top:2px;
+  background:var(--superficie-2); border-radius:10px; max-width:100%;
 }
 .chip-escopo{
   height:32px; padding:0 12px; border:0; border-radius:8px; cursor:pointer;
   background:transparent; color:var(--tinta-suave);
   font-family:var(--sans); font-size:13px; font-weight:550;
-  display:inline-flex; align-items:center; gap:6px;
+  display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
 }
+.chip-escopo svg{width:15px; height:15px; stroke:currentColor; fill:none;
+  stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;}
 .chip-escopo:hover{color:var(--tinta);}
 .chip-escopo[aria-pressed="true"]{
   background:var(--fundo); color:var(--tinta); box-shadow:var(--sombra);
@@ -757,6 +827,10 @@ a{color:inherit;}
 
 /* Telas estreitas (o Poco cai aqui com fonte do sistema aumentada). */
 @media (max-width:430px){
+  /* 2x2: com larguras naturais a segunda linha ficava desalinhada da
+     primeira, e o grupo parecia quebrado em vez de dobrado. */
+  .escopo{display:flex; width:100%;}
+  .chip-escopo{flex:1 1 calc(50% - 3px); justify-content:center;}
   .marca-sub{display:none;}
   .btn-obs-txt{display:none;}
   .btn-obs{width:40px; padding:0; justify-content:center;}
@@ -780,4 +854,7 @@ ICONES = {
     "lua": '<svg viewBox="0 0 20 20"><path d="M16.5 11.8A6.8 6.8 0 0 1 8.2 3.5a6.8 6.8 0 1 0 8.3 8.3Z"/></svg>',
     "foto": '<svg viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.2" r="1.3"/><path d="m3.5 14 4-3.6 3 2.6 2.6-2.2 3.4 3"/></svg>',
     "vazio": '<svg viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.4"/><path d="m16.5 16.5-3.9-3.9"/></svg>',
+    "descartar": '<svg viewBox="0 0 20 20"><path d="m6 6 8 8M14 6l-8 8"/></svg>',
+    "restaurar": '<svg viewBox="0 0 20 20"><path d="M4 10a6 6 0 1 1 1.8 4.3"/><path d="M4 5.5V10h4.5"/></svg>',
+    "lixeira": '<svg viewBox="0 0 20 20"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.7 9.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L14 6"/></svg>',
 }
