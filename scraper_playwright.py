@@ -377,6 +377,10 @@ def scrape(site: dict) -> list[dict]:
                     url = padrao_url_pagina.format(n=pagina)
                 else:
                     url = f"{base_url}{sep}pagina={pagina}"
+                # O Playwright não passa por utils.get_html, então o
+                # Crawl-delay precisa ser respeitado aqui também -- senão a
+                # diretiva valeria só para as fontes de requests.
+                utils.aguardar_vez(url)
                 try:
                     page.goto(url, wait_until=wait_until, timeout=45000)
                 except Exception:

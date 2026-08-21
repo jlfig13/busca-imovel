@@ -1,7 +1,7 @@
 # Estado Atual
 
-**Atualizado em:** 2026-08-20
-**Branch:** `main` (limpa, sem PR aberto)
+**Atualizado em:** 2026-08-21
+**Branch:** `claude/remote-control-hgauah`
 **No ar:** https://jlfig13.github.io/busca-imovel/
 
 ---
@@ -14,6 +14,44 @@
 | [#4](https://github.com/jlfig13/busca-imovel/pull/4) | Cron 07:00 → 07:13 BRT, fora da hora cheia |
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
+
+**21/08 (1):** postura de coleta alinhada ao que o projeto diz fazer, antes
+de falar do projeto em público. Quatro mudanças:
+
+- **`Crawl-delay` virou espera de verdade.** O `robots.py` já extraía a
+  diretiva e gravava no banco, e nada esperava — inclusive na Eduardo
+  Feitosa, onde o próprio config registra que o site "pede Crawl-delay: 5, o
+  que precisa ser respeitado". Agora `utils.aguardar_vez()` enfileira por
+  **domínio** (Zap/Viva Real/Imovelweb/CRECI aparecem duas vezes cada no
+  config), com teto de 30s e sem inventar pausa para quem não declarou nada.
+  Vale para `requests` e para o Playwright.
+- **Integração com "web unlocker" comercial removida** (`utils.py`,
+  `config.py`, README). Nunca foi ligada — as variáveis viviam vazias e
+  nenhum scraper pedia o caminho —, mas era um contorno explícito de
+  Cloudflare/DataDome no código de um projeto que decide o que raspar pelo
+  robots.txt. Incoerente de manter, e indefensável de explicar.
+- **README ganhou escopo e limites de verdade** (seção "Escopo, uso e
+  limites"): projeto pessoal, não comercial, sem dado pessoal, sem
+  redistribuir descrição de anúncio, com o que o robô deliberadamente não
+  faz. A "Observação sobre Termos de Uso" que existia era vaga e dizia
+  "não passe de 1x/semana" enquanto o cron roda 2x/dia.
+- **README destravado da realidade:** cadência corrigida na tabela de
+  arquivos e a linha do `scraper_portais.py` (arquivo que não existe mais)
+  trocada pelo `scraper_chavesnamao.py`.
+
+Levantamento que motivou tudo isso, para não refazer: o dashboard público
+**não** publica descrição de anúncio (só fato estruturado + link para a
+origem, foto por hotlink na fonte), e `telefone`/`imobiliaria` existem no
+schema mas estão **vazias nos 327 imóveis** do banco commitado e não são
+referenciadas em `dashboard.py`. Ou seja: não há dado pessoal em tratamento
+hoje. Fica registrado porque a pergunta volta toda vez.
+
+**Pendência conhecida:** o UA. O `robots.py` avalia as regras contra
+`"apt-scraper (monitor pessoal de aluguel)"`, mas as requisições saem com
+`HEADERS` de Chrome 126 (`utils.py`). Se identifica como robô para decidir
+se pode, e como navegador para buscar. Defensável tecnicamente (site devolve
+403 a UA desconhecido), frágil de sustentar em público — decisão de produto,
+não foi mexido.
 
 **20/08 (8):** galeria cheia na vitrine — busca a página do anúncio quando
 o imóvel do recorte tem menos de 5 fotos (antes era "nenhuma foto", que
@@ -91,7 +129,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron 2x/dia: 11:13 e 21:13 UTC (08:13 e 18:13 BRT) + disparo manual.
-- 130 testes, ~3s.
+- 171 testes, ~3s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

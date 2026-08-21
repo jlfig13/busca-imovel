@@ -2,7 +2,9 @@
 import logging
 import random
 import re
+import threading
 import time
+import urllib.parse
 from datetime import date
 
 import requests
@@ -62,6 +64,81 @@ _MARCAS_BLOQUEIO = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Crawl-delay: a diretiva lida vira espera de verdade
+# ---------------------------------------------------------------------------
+# O robots.py já extraía o Crawl-delay e gravava no banco, mas nada no código
+# esperava esse tempo -- a diretiva era lida e ignorada. Pior: config.py
+# registra, para a Eduardo Feitosa, que o site "pede Crawl-delay: 5, o que
+# precisa ser respeitado". Estava escrito e não acontecia.
+#
+# A espera é por DOMÍNIO, não por fonte: Zap, Viva Real e Imovelweb aparecem
+# duas vezes cada no config (Recife e Olinda), e Portal CRECI também. Contar
+# por fonte deixaria dois workers batendo no mesmo servidor sem intervalo.
+#
+# Só espera quem pediu. Ausência de Crawl-delay continua sem atraso artificial
+# -- inventar uma pausa global multiplicaria o tempo da rodada por nada.
+_atraso_por_dominio: dict[str, float] = {}
+_ultimo_acesso: dict[str, float] = {}
+_trava_atraso = threading.Lock()
+
+# Teto de sanidade. Site que anuncia Crawl-delay: 3600 (existe) travaria a
+# rodada inteira; acima disto a fonte não é viável e o lugar de decidir isso
+# é o config, desativando-a -- não um worker dormindo uma hora.
+ATRASO_MAXIMO = 30.0
+
+
+def dominio_de(url: str) -> str:
+    p = urllib.parse.urlparse(url)
+    return p.netloc.lower()
+
+
+def registrar_crawl_delay(url: str, segundos) -> None:
+    """Guarda o Crawl-delay do domínio, vindo do veredito de robots.txt."""
+    if not segundos:
+        return
+    try:
+        valor = float(segundos)
+    except (TypeError, ValueError):
+        return
+    if valor <= 0:
+        return
+    dom = dominio_de(url)
+    if not dom:
+        return
+    valor = min(valor, ATRASO_MAXIMO)
+    with _trava_atraso:
+        # Maior vence: duas fontes no mesmo domínio devem convergir para a
+        # diretiva mais conservadora, não para a última lida.
+        if valor > _atraso_por_dominio.get(dom, 0):
+            _atraso_por_dominio[dom] = valor
+
+
+def aguardar_vez(url: str) -> float:
+    """Dorme o que falta para respeitar o Crawl-delay do domínio da URL.
+
+    A marca de "último acesso" é gravada ANTES de dormir, ainda com a trava
+    tomada: se fosse gravada depois, dois workers leriam a mesma marca velha,
+    dormiriam o mesmo intervalo e sairiam juntos -- exatamente a rajada que a
+    diretiva existe para evitar.
+    """
+    dom = dominio_de(url)
+    if not dom:
+        return 0.0
+    with _trava_atraso:
+        atraso = _atraso_por_dominio.get(dom, 0)
+        if not atraso:
+            return 0.0
+        agora = time.monotonic()
+        proximo = _ultimo_acesso.get(dom, 0) + atraso
+        espera = max(0.0, proximo - agora)
+        _ultimo_acesso[dom] = max(agora, proximo)
+    if espera:
+        log.info(f"Crawl-delay: aguardando {espera:.1f}s antes de {dom}")
+        time.sleep(espera)
+    return espera
+
+
 def detectar_bloqueio(html: str | None) -> bool:
     """True quando o corpo é uma página de desafio anti-bot, não conteúdo."""
     if not html:
@@ -90,6 +167,7 @@ def get_html_diag(
     motivo = None
     for tentativa in range(retries + 1):
         try:
+            aguardar_vez(url)
             resp = requests.get(url, headers=HEADERS, timeout=timeout)
             if resp.status_code == 200:
                 if detectar_bloqueio(resp.text):
@@ -119,33 +197,12 @@ def get_html_diag(
     return None, motivo
 
 
-def get_html_brightdata(url: str) -> str | None:
-    """Busca uma página via Bright Data Web Unlocker (bypassa Cloudflare/
-    DataDome). Requer BRIGHTDATA_API_KEY e BRIGHTDATA_UNLOCKER_ZONE em config.py."""
-    if not config.BRIGHTDATA_API_KEY or not config.BRIGHTDATA_UNLOCKER_ZONE:
-        return None
-    try:
-        resp = requests.post(
-            "https://api.brightdata.com/request",
-            headers={"Authorization": f"Bearer {config.BRIGHTDATA_API_KEY}"},
-            json={"zone": config.BRIGHTDATA_UNLOCKER_ZONE, "url": url, "format": "raw"},
-            timeout=60,
-        )
-        if resp.status_code == 200:
-            return resp.text
-        log.warning(f"Bright Data HTTP {resp.status_code} em {url}")
-    except requests.RequestException as e:
-        log.warning(f"Erro Bright Data em {url}: {e}")
-    return None
+def fetch(url: str) -> str | None:
+    """Busca uma página. Ponto único de entrada dos scrapers de HTML.
 
-
-def fetch(url: str, prefer_brightdata: bool = False) -> str | None:
-    """Escolhe a melhor estratégia de busca disponível."""
-    if prefer_brightdata:
-        html = get_html_brightdata(url)
-        if html:
-            return html
-        log.info(f"Bright Data indisponível/falhou, tentando requests simples: {url}")
+    Já foi um seletor de estratégia, com um caminho opcional por serviço
+    comercial de contorno de anti-bot. Esse caminho saiu em 21/08/2026 (ver
+    config.py): sobrou o que sempre foi usado de fato."""
     return get_html(url)
 
 
