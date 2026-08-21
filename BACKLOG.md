@@ -2,6 +2,83 @@
 
 ---
 
+## Fase 5 — Postura de coleta (21/08/2026)
+
+Motivada por uma pergunta simples: dá para falar deste projeto em público sem
+que o código desminta o texto? A auditoria achou três lugares onde desmentia.
+
+- [x] **`Crawl-delay` aplicado, não só lido.** O `robots.py` extraía a
+  diretiva desde a Fase 3 e gravava em `robots_veredito.crawl_delay`, e
+  nenhum ponto do código esperava esse tempo — a diretiva era lida e
+  ignorada. O caso mais constrangedor estava escrito no próprio `config.py`:
+  a Eduardo Feitosa "pede `Crawl-delay: 5`, o que precisa ser respeitado".
+  Não era.
+  Agora `utils.aguardar_vez()` enfileira as requisições por **domínio**, não
+  por fonte: Zap, Viva Real, Imovelweb e Portal CRECI aparecem duas vezes
+  cada no config (Recife e Olinda), e contar por fonte deixaria dois dos três
+  workers batendo no mesmo servidor sem intervalo nenhum. A marca de último
+  acesso é gravada *antes* do sleep, com a trava tomada — gravar depois faria
+  dois workers lerem a mesma marca velha, dormirem o mesmo intervalo e saírem
+  juntos, que é exatamente a rajada que a diretiva existe para evitar.
+  *Descartado:* pausa global fixa entre requisições. Multiplicaria o tempo da
+  rodada para respeitar uma regra que a maioria das fontes não declarou.
+  Teto de 30s (`ATRASO_MAXIMO`) porque existe site anunciando `Crawl-delay:
+  3600`: acima disso a fonte não é viável, e o lugar de decidir isso é o
+  config, desativando-a — não um worker dormindo uma hora.
+  Cobertura: `test_crawl_delay.py` (7 testes), incluindo o caso de dois
+  workers concorrentes no mesmo domínio.
+
+- [x] **Integração com "web unlocker" comercial removida.** `utils.py` tinha
+  uma função cuja docstring dizia, com todas as letras, que contornava
+  Cloudflare/DataDome, mais duas variáveis em `config.py` e uma seção no
+  README. Nunca foi ligada — as variáveis viviam vazias e nenhum scraper
+  passava `prefer_brightdata=True`.
+  *Por que remover código morto:* o projeto decide o que raspar pelo
+  robots.txt e desativa fonte que proíbe (quatro estão fora por isso). Manter
+  ao lado disso um contorno explícito de controle técnico de acesso é
+  incoerente, e é o primeiro item que qualquer leitor usaria para dizer que a
+  postura declarada é fachada. Se um portal protegido parar de funcionar, a
+  resposta é desativar a fonte, não furar a proteção.
+
+- [x] **README: escopo, uso e limites.** A seção "Observação sobre Termos de
+  Uso" dizia que scraping pessoal "geralmente não é problema" e pedia para
+  não passar de 1x/semana — enquanto o cron roda 2x/dia desde a Fase 4. Foi
+  trocada por uma declaração verificável: projeto pessoal e não comercial,
+  robots.txt respeitado (com as fontes que isso custou), `Crawl-delay`
+  cumprido, sem contorno de anti-bot, sem dado pessoal, sem redistribuir
+  conteúdo de anúncio. Cada linha corresponde a algo que existe no código.
+
+- [x] **README alinhado ao repositório.** Tabela de arquivos dizia
+  "agendamento semanal" e listava `scraper_portais.py`, que não existe mais.
+
+### Levantado e deliberadamente não mexido
+
+- **Não há dado pessoal em tratamento.** As colunas `telefone` e
+  `imobiliaria` existem no schema de `db.py`, mas estão vazias nos 327
+  imóveis do banco commitado e não são referenciadas em `dashboard.py`. O
+  dashboard público leva fato estruturado (preço, bairro, m², quartos) mais
+  link para a origem; a descrição do anúncio **não** vai para a página, e a
+  foto é `<img src>` apontando para a fonte, não cópia rehospedada. Fica
+  registrado aqui porque a pergunta volta toda vez que alguém olha o projeto
+  de fora.
+
+- **O User-Agent é inconsistente, e continua.** O `robots.py` avalia as
+  regras contra `"apt-scraper (monitor pessoal de aluguel)"` — a identidade
+  honesta, que faz o scraper cair na regra do `*` e foi o que pegou o Harry
+  Fernandes. Mas as requisições saem com `HEADERS` de Chrome 126, porque site
+  demais devolve 403 a agente desconhecido (o OLX faz isso até no
+  `/robots.txt`). Ou seja: se identifica como robô para decidir se pode, e
+  como navegador para buscar. Sustentável tecnicamente, frágil de defender em
+  público. Mudar é decisão de produto — pode custar fontes — e não foi
+  tomada.
+
+- **`_ANTI_BOT_SCRIPT` no `scraper_playwright.py`** segue no lugar. É
+  mascaramento de automação, mesma família do item removido acima, mas ao
+  contrário dele está em uso e sustenta a maior parte do catálogo. Removê-lo
+  é uma decisão com custo real, não uma limpeza.
+
+---
+
 ## Fase 4 — Celular, catálogo e operação (19/08/2026)
 
 ### Dashboard no celular (Poco X6 Pro / iPhone 11)

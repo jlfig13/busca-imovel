@@ -38,8 +38,7 @@ publicado no GitHub, o dashboard é só um link.
 4. O link do dashboard fica em **Settings → Pages** (formato
    `https://SEU_USUARIO.github.io/SEU_REPO/`).
 
-Sem chave de API nem segredo obrigatório para o funcionamento básico
-(Bright Data é opcional — ver seção abaixo).
+Sem chave de API nem segredo: o robô roda só com o que está no repositório.
 
 ## Rodar localmente (para testar mudanças)
 
@@ -89,14 +88,6 @@ Na primeira execução (banco vazio) tudo aparece como "novo" — é esperado.
 A lista completa com URLs está em `config.py` (`SITES`). Ver
 `BACKLOG 5.1` para o guia de como adicionar um site novo.
 
-## Bright Data (opcional)
-
-Alguns portais têm proteção anti-bot forte; hoje contornamos via
-Playwright headless com flags anti-detecção, que cobre a maioria dos
-casos. Se algum voltar a falhar, dá pra configurar Bright Data Web
-Unlocker via `BRIGHTDATA_API_KEY`/`BRIGHTDATA_UNLOCKER_ZONE` (variáveis de
-ambiente, ou secrets do repositório se rodando via Actions).
-
 ## Estrutura dos arquivos
 
 ```
@@ -106,18 +97,40 @@ db.py                         -> SQLite: histórico e detecção de "novo"
 scraper_playwright.py         -> scraper principal (Chromium headless) -- maioria dos sites
 scraper_pratica_internet.py   -> scraper p/ sites HTML estático (Luiza Parizi, Belchior Alvarez)
 scraper_cards_inline.py       -> scraper genérico p/ sites c/ dados no card (Âncora, Abasol, ...)
-scraper_portais.py            -> scraper JSON via Bright Data (fallback, não usado por padrão hoje)
+scraper_chavesnamao.py        -> scraper do Chaves na Mão (HTML + detalhe de custo)
 report.py                     -> gera a planilha Excel
 dashboard.py                  -> gera o dashboard.html
 main.py                       -> roda tudo (chamado pelo workflow)
 test_*.py                     -> testes de regressão do parsing
-.github/workflows/scrape.yml  -> agendamento semanal + publicação no Pages
+.github/workflows/scrape.yml  -> agendamento 2x/dia + publicação no Pages
 saida/                        -> gerado automaticamente (dashboard, Excel, banco, log)
 ```
 
-## Observação sobre Termos de Uso
+## Escopo, uso e limites
 
-Scraping de sites públicos para uso pessoal (buscar seu próprio
-apartamento) geralmente não é problema, mas evite aumentar a frequência
-além de 1x/semana para não sobrecarregar os servidores das imobiliárias
-menores.
+**Projeto pessoal e não comercial.** Existe para uma finalidade só: achar um
+apartamento para alugar em Recife ou Olinda. Não é produto, não é serviço,
+não vende nem revende dado, e não há qualquer relação com os portais e
+imobiliárias monitorados.
+
+O que o robô faz, e o que ele deliberadamente não faz:
+
+- **Respeita `robots.txt`.** `robots.py` consulta a política de cada domínio,
+  guarda o veredito com data e revalida a cada 30 dias; `main.py` pula a fonte
+  quando a política proíbe. Quatro fontes estão desativadas em `config.py` por
+  esse motivo — a checagem custa fonte, e é para isso que ela serve.
+- **Respeita `Crawl-delay`.** Quando o site declara um intervalo, ele é
+  cumprido por domínio, inclusive entre as coletas paralelas.
+- **Não contorna proteção anti-bot de propósito.** Fonte que bloqueia é
+  registrada como bloqueada e some da rodada; não existe serviço de contorno
+  no código (ver a nota em `config.py`).
+- **Não coleta nem publica dado pessoal.** O que entra é fato do imóvel:
+  preço, endereço, área, quartos, vagas, andar. Nome, telefone e contato de
+  anunciante ficam de fora.
+- **Não redistribui conteúdo dos anúncios.** O dashboard publica dado factual
+  e um link para o anúncio na origem; a foto é carregada da própria fonte, e
+  a descrição do anúncio não vai para a página pública.
+
+**Cadência:** duas rodadas por dia (08:13 e 18:13 BRT), poucas páginas por
+fonte. Se for reaproveitar este código, mantenha a frequência baixa — boa
+parte das fontes são imobiliárias pequenas, com servidor à altura.

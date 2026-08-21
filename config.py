@@ -105,16 +105,14 @@ ARQUIVO_DB = os.path.join(PASTA_SAIDA, "apartamentos.db")
 ARQUIVO_DASHBOARD = os.path.join(PASTA_SAIDA, "dashboard.html")
 ARQUIVO_LOG = os.path.join(PASTA_SAIDA, "scraper.log")
 
-# ---------------------------------------------------------------------------
-# BRIGHT DATA (opcional, mas recomendado para OLX / Viva Real / Zap Imóveis)
-# ---------------------------------------------------------------------------
-# Esses 3 portais têm proteção anti-bot forte (Cloudflare/DataDome). Requests
-# simples costumam ser bloqueados depois de poucas tentativas. Se quiser que
-# esses 3 funcionem de forma confiável todo dia, crie uma conta em
-# https://brightdata.com, ative uma zona "Web Unlocker" e preencha abaixo
-# (ou exporte como variável de ambiente antes de rodar).
-BRIGHTDATA_API_KEY = os.environ.get("BRIGHTDATA_API_KEY", "")
-BRIGHTDATA_UNLOCKER_ZONE = os.environ.get("BRIGHTDATA_UNLOCKER_ZONE", "")
+# Removido em 21/08/2026: a integração opcional com um serviço de "web
+# unlocker" comercial, cuja função declarada era contornar Cloudflare/DataDome.
+# Nunca chegou a ser ligada (as duas variáveis viviam vazias e nenhum scraper
+# pedia o caminho), mas manter no código um contorno explícito de controle
+# técnico de acesso é incoerente com o resto do projeto, que decide o que
+# raspar pelo robots.txt e desativa fonte que proíbe. Se um portal protegido
+# parar de funcionar, a resposta é desativar a fonte no config -- não furar a
+# proteção.
 
 # ---------------------------------------------------------------------------
 # SITES MONITORADOS

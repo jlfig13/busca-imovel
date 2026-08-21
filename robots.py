@@ -151,8 +151,15 @@ def pode_raspar(url: str) -> bool:
 
     Ausência de robots.txt não proíbe nada -- tratá-la como proibição foi o
     erro que tirou duas fontes do ar. Falha de rede também não: o site pode
-    estar fora do ar, e negar por isso silenciaria a fonte sem motivo."""
-    return veredito_para(url)["veredito"] != PROIBIDO
+    estar fora do ar, e negar por isso silenciaria a fonte sem motivo.
+
+    Efeito colateral deliberado: registra o Crawl-delay do domínio. É o único
+    ponto por onde toda fonte passa antes de ser raspada, então é aqui que a
+    diretiva vira espera de verdade -- antes ela era lida, gravada no banco e
+    esquecida."""
+    r = veredito_para(url)
+    utils.registrar_crawl_delay(url, r.get("crawl_delay"))
+    return r["veredito"] != PROIBIDO
 
 
 def auditar_fontes() -> list[dict]:
