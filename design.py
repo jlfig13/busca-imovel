@@ -243,30 +243,35 @@ a{color:inherit;}
 
    Os dois botões ficam SOBRE a foto, no canto oposto aos selos: são ações
    sobre o card inteiro, e no corpo brigariam com "Ver anúncio", que é a ação
-   principal. No celular (hover:none) ficam sempre visíveis -- esconder atrás
-   de hover num aparelho sem cursor é esconder para sempre. */
+   principal.
+
+   SEMPRE visíveis. A primeira versão os escondia até o hover e contava com
+   `@media (hover:none)` para revelá-los no celular -- e a funcionalidade
+   simplesmente não foi encontrada no primeiro uso. Duas razões para desistir
+   da ideia: Chrome Android em "versão para computador" reporta
+   `hover: hover`, e aí o botão fica invisível para sempre num aparelho sem
+   cursor; e, mesmo onde a consulta acerta, esconder a ação principal de uma
+   funcionalidade nova atrás de um gesto que ninguém faz é trocar descoberta
+   por arrumação. O hover ficou só para reforçar o contraste. */
 .acoes-card{
   position:absolute; top:9px; right:9px; display:flex; gap:6px;
 }
 .btn-acao{
-  width:30px; height:30px; padding:0; border:0; border-radius:8px;
+  width:34px; height:34px; padding:0; border:0; border-radius:8px;
   cursor:pointer; display:grid; place-items:center;
   background:rgba(13,17,20,.55); color:#fff;
-  backdrop-filter:blur(3px); opacity:0; transition:opacity .12s, background .12s;
+  backdrop-filter:blur(3px); opacity:1; transition:background .12s;
 }
-.imovel:hover .btn-acao{opacity:1;}
-.btn-acao:hover{background:rgba(13,17,20,.8);}
+.imovel:hover .btn-acao{background:rgba(13,17,20,.72);}
+.btn-acao:hover{background:rgba(13,17,20,.88);}
 .btn-acao svg{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.7;
   stroke-linecap:round; stroke-linejoin:round;}
 /* Favorito ligado é estado, não hover: fica aceso sempre, e a estrela cheia
    é o que distingue de longe na grade. */
 .btn-acao.favorito[aria-pressed="true"]{
-  opacity:1; background:var(--ocre); color:#fff;
+  background:var(--ocre); color:#fff;
 }
 .btn-acao.favorito[aria-pressed="true"] svg{fill:currentColor;}
-@media (hover:none){
-  .btn-acao{opacity:1; width:34px; height:34px;}
-}
 
 /* Card na lixeira: continua legível, mas não compete com a lista viva. */
 .imovel.descartado .foto{opacity:.55;}

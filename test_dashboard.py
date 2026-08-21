@@ -101,3 +101,28 @@ def test_pulso_liga_o_filtro(ambiente):
     assert "acao('Novos hoje', novos, 'novos')" in html
     assert "acao('Baixaram', quedas, 'quedas')" in html
     assert "function ligarChip(nome)" in html
+
+
+def test_acao_de_descarte_nao_depende_de_hover(ambiente):
+    """A funcionalidade não foi encontrada no primeiro uso no celular.
+
+    A causa possível mais séria não era cache: Chrome Android em "versão para
+    computador" reporta `hover: hover`, e o botão, que só aparecia no hover
+    (com `@media (hover:none)` como escape), ficava invisível para sempre num
+    aparelho sem cursor. Agora nasce visível."""
+    import design
+    css = _css_de(design)
+    bloco = css[css.index(".btn-acao{"):css.index(".btn-acao svg{")]
+    assert "opacity:1" in bloco, "o botão de ação tem de nascer visível"
+    assert ".imovel:hover .btn-acao{opacity" not in css, (
+        "revelar a ação no hover devolve o defeito"
+    )
+
+
+def _css_de(design):
+    """O CSS mora numa constante de nome variável; acha a que contém .btn-acao."""
+    for nome in dir(design):
+        v = getattr(design, nome)
+        if isinstance(v, str) and ".btn-acao{" in v:
+            return v
+    raise AssertionError("CSS com .btn-acao não encontrado em design.py")
