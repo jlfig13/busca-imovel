@@ -126,3 +126,62 @@ def _css_de(design):
         if isinstance(v, str) and ".btn-acao{" in v:
             return v
     raise AssertionError("CSS com .btn-acao não encontrado em design.py")
+
+
+# ---------------------------------------------------------------------------
+# Persistência da triagem
+# ---------------------------------------------------------------------------
+# O relato foi "marco favorito e na próxima atualização tudo é desfeito".
+# Reproduzido: o mecanismo persiste e as URLs são estáveis entre rodadas -- o
+# que falhava era o navegador bloqueando dados do site, com a falha engolida
+# num catch vazio. Daí estes três: avisar, semear do repositório, e permitir
+# backup.
+
+def test_falha_de_armazenamento_nao_e_engolida(ambiente):
+    html = _html(ambiente, [_imovel()])
+    assert "ARMAZENAMENTO_OK" in html
+    assert "pintarAvisoArmazenamento" in html
+    assert 'id="aviso-armazenamento"' in html
+
+
+def test_triagem_ausente_nao_derruba_a_rodada(ambiente, monkeypatch):
+    monkeypatch.setattr(config, "ARQUIVO_TRIAGEM", "/nao/existe/triagem.json")
+    assert ambiente._ler_triagem() == {"favoritos": {}, "descartados": {}}
+
+
+def test_triagem_quebrada_nao_derruba_a_rodada(ambiente, monkeypatch, tmp_path):
+    """A triagem é conveniência; o catálogo é o produto."""
+    arq = tmp_path / "triagem.json"
+    arq.write_text("{isto não é json", encoding="utf-8")
+    monkeypatch.setattr(config, "ARQUIVO_TRIAGEM", str(arq))
+    assert ambiente._ler_triagem() == {"favoritos": {}, "descartados": {}}
+
+
+def test_triagem_aceita_lista_de_urls(ambiente, monkeypatch, tmp_path):
+    """Formato que sai de um copiar-colar apressado."""
+    arq = tmp_path / "triagem.json"
+    arq.write_text('{"favoritos": ["https://a.com/1"], "descartados": {}}',
+                   encoding="utf-8")
+    monkeypatch.setattr(config, "ARQUIVO_TRIAGEM", str(arq))
+    assert ambiente._ler_triagem()["favoritos"] == {"https://a.com/1": ""}
+
+
+def test_semente_versionada_vai_para_o_html(ambiente, monkeypatch, tmp_path):
+    """É o que sobrevive à limpeza de dados do navegador e à troca de aparelho."""
+    arq = tmp_path / "triagem.json"
+    arq.write_text('{"favoritos": {"https://a.com/1": "2026-08-22"},'
+                   ' "descartados": {}}', encoding="utf-8")
+    monkeypatch.setattr(config, "ARQUIVO_TRIAGEM", str(arq))
+    html = _html(ambiente, [_imovel()])
+    assert '"https://a.com/1": "2026-08-22"' in html
+    assert "const SEMENTE" in html
+    # união, não substituição: o local soma por cima da semente
+    assert "unir(SEMENTE.favoritos" in html
+
+
+def test_restaurar_backup_nao_apaga_o_que_ja_existe(ambiente):
+    """Restaurar num aparelho que já tem marcação não pode zerá-la."""
+    html = _html(ambiente, [_imovel()])
+    trecho = html[html.index("el('inp-restaurar')"):html.index("/* Liga (ou desliga)")]
+    assert "unir(FAVORITOS, dados.favoritos" in trecho
+    assert "unir(DESCARTADOS, dados.descartados" in trecho

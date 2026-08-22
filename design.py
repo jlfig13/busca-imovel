@@ -388,6 +388,41 @@ a{color:inherit;}
   background:var(--fundo); color:var(--tinta); box-shadow:var(--sombra);
 }
 
+/* ---------- aviso de armazenamento e backup da triagem ---------- */
+/* Falha silenciosa em persistência é pior que funcionalidade ausente: a
+   pessoa marca, confia, e refaz a triagem inteira no dia seguinte sem saber
+   por quê. O aviso é discreto mas não some. */
+/* Terceira vez que esta armadilha morde no projeto (ver .filtros e .ofertas):
+   display:flex/grid declarado pelo autor vence o [hidden] da folha do
+   navegador, e o elemento nasce visível. */
+.aviso-armazenamento[hidden],.triagem-backup[hidden]{display:none;}
+.aviso-armazenamento{
+  display:flex; align-items:flex-start; gap:8px; margin:12px 0 0;
+  padding:10px 12px; border-radius:var(--r); font-size:12.5px; line-height:1.5;
+  background:var(--atencao-lavado); color:var(--atencao);
+}
+.aviso-armazenamento svg{
+  width:16px; height:16px; flex:none; margin-top:1px;
+  stroke:currentColor; fill:none; stroke-width:1.6;
+}
+.aviso-armazenamento b{font-weight:650;}
+
+.triagem-backup{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px;
+}
+.backup-rot{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--tinta-fraca);
+}
+.btn-backup{
+  height:30px; padding:0 11px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--linha); background:var(--superficie);
+  color:var(--tinta-media); font-family:var(--sans); font-size:12.5px;
+  font-weight:550; display:inline-flex; align-items:center;
+}
+.btn-backup:hover{border-color:var(--linha-forte); color:var(--tinta);}
+.backup-nota{font-size:12px; color:var(--tinta-suave);}
+
 /* ---------- barra de filtros ---------- */
 .barra-filtros{
   display:flex; align-items:center; gap:12px; flex-wrap:wrap;

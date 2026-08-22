@@ -106,6 +106,37 @@ test_*.py                     -> testes de regressão do parsing
 saida/                        -> gerado automaticamente (dashboard, Excel, banco, log)
 ```
 
+## Triagem: favoritos e descartes
+
+No dashboard, cada card tem ⭐ (favoritar) e ✕ (descartar) sobre a foto. O
+descartado sai da lista e vai para a **Lixeira**, de onde volta com um clique.
+
+A triagem vive em três camadas, da mais durável para a mais imediata:
+
+1. **`triagem.json`** na raiz do repositório, versionado. É lido a cada
+   geração e embutido no dashboard. Sobrevive a limpeza de dados do navegador
+   e a troca de aparelho — é a única camada que sobrevive.
+2. **Backup/restaurar**, na barra que aparece em Favoritos e na Lixeira. O
+   arquivo baixado tem exatamente a forma do `triagem.json`: para tornar a
+   triagem permanente, baixe o backup e commite o arquivo na raiz.
+3. **`localStorage`**, para a marcação do dia valer na hora. É por navegador:
+   o que você marcar no celular não aparece no computador. Se o navegador
+   estiver bloqueando dados do site, o dashboard avisa em vez de perder a
+   marcação em silêncio.
+
+Formato do `triagem.json`:
+
+```json
+{
+  "favoritos":   {"https://portal.com/imovel/123": "2026-08-22"},
+  "descartados": {"https://portal.com/imovel/456": "2026-08-22"}
+}
+```
+
+A chave é a **URL do anúncio** (não o id do imóvel, que é reconstruído a cada
+rodada). Um imóvel conta como marcado se qualquer um dos seus anúncios estiver
+na lista.
+
 ## Escopo, uso e limites
 
 **Projeto pessoal e não comercial.** Existe para uma finalidade só: achar um

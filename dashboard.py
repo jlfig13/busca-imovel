@@ -153,6 +153,34 @@ def _painel_rendimento(rendimento: list[dict] | None) -> str:
     </div>"""
 
 
+def _ler_triagem() -> dict:
+    """Lê triagem.json (favoritos/descartes versionados) para embutir no HTML.
+
+    Arquivo ausente ou quebrado não pode derrubar a rodada: a triagem é
+    conveniência, o catálogo é o produto. Volta vazio e a vida segue."""
+    try:
+        with open(config.ARQUIVO_TRIAGEM, encoding="utf-8") as f:
+            dados = json.load(f)
+    except FileNotFoundError:
+        return {"favoritos": {}, "descartados": {}}
+    except (json.JSONDecodeError, OSError) as e:
+        log.warning(f"triagem.json ilegível ({e}); seguindo sem semente")
+        return {"favoritos": {}, "descartados": {}}
+
+    saida = {}
+    for chave in ("favoritos", "descartados"):
+        valor = dados.get(chave)
+        # aceita tanto {url: data} quanto uma lista de urls, que é o que
+        # sai de um copiar-colar apressado
+        if isinstance(valor, list):
+            saida[chave] = {u: "" for u in valor if isinstance(u, str)}
+        elif isinstance(valor, dict):
+            saida[chave] = {k: v for k, v in valor.items() if isinstance(k, str)}
+        else:
+            saida[chave] = {}
+    return saida
+
+
 def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
                     rendimento: list[dict] | None = None,
                     ocultos: dict | None = None) -> str:
@@ -222,6 +250,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     med_m2 = mediana_m2[len(mediana_m2) // 2] if mediana_m2 else None
 
     json_dados = json.dumps(dados, ensure_ascii=False).replace("</", "<\\/")
+    json_semente = json.dumps(_ler_triagem(), ensure_ascii=False)
     ic = design.ICONES
     hoje = date.today().strftime("%d/%m/%Y")
     perfis = " · ".join(
@@ -322,6 +351,21 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
       {ic['estrela']} Favoritos <span class="chip-n" id="n-favoritos"></span></button>
     <button class="chip-escopo" id="e-lixeira" type="button" aria-pressed="false">
       {ic['lixeira']} Lixeira <span class="chip-n" id="n-lixeira"></span></button>
+  </div>
+
+  <p class="aviso-armazenamento" id="aviso-armazenamento" hidden>
+    {ic['info']} <span>Este navegador está bloqueando os dados deste site.
+    Favoritos e descartes valem só até fechar a página — use
+    <b>Baixar backup</b> e me mande o arquivo para gravar no repositório.</span>
+  </p>
+
+  <div class="triagem-backup" id="triagem-backup" hidden>
+    <span class="backup-rot">Triagem</span>
+    <button class="btn-backup" id="btn-baixar" type="button">Baixar backup</button>
+    <label class="btn-backup">Restaurar
+      <input type="file" id="inp-restaurar" accept="application/json" hidden>
+    </label>
+    <span class="backup-nota" id="backup-nota"></span>
   </div>
 
   <div class="barra-filtros" id="barra-filtros">
@@ -490,6 +534,19 @@ let escopo = 'meus';
    no repositório a cada rodada) daria conflito garantido. O try/catch é o
    mesmo cuidado do tema -- em file:// o acesso pode levantar exceção, e a
    triagem não pode custar o dashboard. */
+/* Sonda de escrita. A primeira versão engolia a falha num catch vazio, e o
+   resultado foi o pior comportamento possível: navegador que bloqueia dados de
+   site aceitava a marcação na tela e perdia tudo na recarga, sem uma palavra.
+   Falha silenciosa em persistência é pior que funcionalidade ausente -- a
+   pessoa confia na marcação e refaz a triagem toda no dia seguinte. */
+let ARMAZENAMENTO_OK = false;
+try {{
+  const sonda = '__sonda__';
+  localStorage.setItem(sonda, '1');
+  ARMAZENAMENTO_OK = localStorage.getItem(sonda) === '1';
+  localStorage.removeItem(sonda);
+}} catch (e) {{ ARMAZENAMENTO_OK = false; }}
+
 function lerLista(chave){{
   try {{
     const cru = localStorage.getItem(chave);
@@ -497,11 +554,27 @@ function lerLista(chave){{
   }} catch (e) {{ return {{}}; }}
 }}
 function gravarLista(chave, obj){{
-  try {{ localStorage.setItem(chave, JSON.stringify(obj)); }} catch (e) {{}}
+  try {{ localStorage.setItem(chave, JSON.stringify(obj)); }} catch (e) {{
+    ARMAZENAMENTO_OK = false;
+    pintarAvisoArmazenamento();
+  }}
 }}
 
-let DESCARTADOS = lerLista('descartados');
-let FAVORITOS = lerLista('favoritos');
+/* Semente versionada: o que estiver em saida/triagem.json entra como estado
+   inicial, vindo embutido no HTML. É a única parte da triagem que sobrevive a
+   troca de aparelho e a limpeza de dados do navegador, porque mora no
+   repositório e não no telefone. O localStorage continua por cima, para a
+   marcação do dia valer na hora, sem esperar rodada. */
+const SEMENTE = {json_semente};
+
+function unir(semente, local){{
+  const r = Object.assign({{}}, semente);
+  for (const k in local) r[k] = local[k];
+  return r;
+}}
+
+let DESCARTADOS = unir(SEMENTE.descartados || {{}}, lerLista('descartados'));
+let FAVORITOS = unir(SEMENTE.favoritos || {{}}, lerLista('favoritos'));
 
 const chavesDe = d => (d.anuncios || []).map(a => a.url).filter(Boolean);
 const marcado = (d, lista) => chavesDe(d).some(u => u in lista);
@@ -660,6 +733,60 @@ function pintarPulso(){{
   el('cn-multi').textContent = multi;
 }}
 
+/* ---------- armazenamento: avisar em vez de perder em silêncio ---------- */
+function pintarAvisoArmazenamento(){{
+  el('aviso-armazenamento').hidden = ARMAZENAMENTO_OK;
+}}
+
+/* Backup só aparece em Favoritos e Lixeira: é onde a pergunta "e se eu perder
+   isso?" existe. Na lista do dia seria mais um botão a ignorar. */
+function pintarBackup(){{
+  el('triagem-backup').hidden = !(escopo === 'favoritos' || escopo === 'lixeira');
+}}
+
+function nota(txt){{
+  const n = el('backup-nota');
+  n.textContent = txt;
+  setTimeout(() => {{ if (n.textContent === txt) n.textContent = ''; }}, 6000);
+}}
+
+/* O arquivo baixado tem a MESMA forma que o dashboard lê como semente
+   (triagem.json na raiz do repositório). Assim o backup não é só um consolo:
+   é o caminho para tornar a triagem permanente e válida em qualquer aparelho
+   -- basta o arquivo entrar no repositório. */
+el('btn-baixar').addEventListener('click', () => {{
+  const conteudo = JSON.stringify(
+    {{favoritos: FAVORITOS, descartados: DESCARTADOS}}, null, 2);
+  const url = URL.createObjectURL(new Blob([conteudo], {{type: 'application/json'}}));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'triagem.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const n = Object.keys(FAVORITOS).length + Object.keys(DESCARTADOS).length;
+  nota(`${{n}} marcação(ões) no arquivo`);
+}});
+
+el('inp-restaurar').addEventListener('change', ev => {{
+  const arq = ev.target.files && ev.target.files[0];
+  if (!arq) return;
+  const leitor = new FileReader();
+  leitor.onload = () => {{
+    let dados;
+    try {{ dados = JSON.parse(leitor.result); }}
+    catch (e) {{ nota('arquivo inválido'); return; }}
+    // UNIÃO, não substituição: restaurar no aparelho novo não pode apagar o
+    // que já foi marcado nele antes de lembrar do backup.
+    FAVORITOS = unir(FAVORITOS, dados.favoritos || {{}});
+    DESCARTADOS = unir(DESCARTADOS, dados.descartados || {{}});
+    gravarLista('favoritos', FAVORITOS);
+    gravarLista('descartados', DESCARTADOS);
+    pintarEscopo(); pintarPulso(); render();
+    nota('restaurado');
+  }};
+  leitor.readAsText(arq);
+  ev.target.value = '';
+}});
+
 /* Liga (ou desliga) um chip e leva o olho até a lista. Sem a rolagem, no
    celular o clique no número não parece ter feito nada: o efeito acontece
    abaixo da dobra. */
@@ -695,6 +822,7 @@ function trocarEscopo(novo){{
   // não seleciona nada
   preencherBairros();
   pintarEscopo();
+  pintarBackup();
   pintarPulso();
   render();
 }}
@@ -1083,6 +1211,8 @@ function lerUrl(){{
 
 lerUrl();
 pintarEscopo();
+pintarBackup();
+pintarAvisoArmazenamento();
 pintarPulso();
 // Aberta de saída quando o link já traz recorte -- quem abre um link
 // filtrado precisa ver O QUE está filtrado --, e no desktop, onde a barra

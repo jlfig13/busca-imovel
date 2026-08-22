@@ -105,6 +105,13 @@ ARQUIVO_DB = os.path.join(PASTA_SAIDA, "apartamentos.db")
 ARQUIVO_DASHBOARD = os.path.join(PASTA_SAIDA, "dashboard.html")
 ARQUIVO_LOG = os.path.join(PASTA_SAIDA, "scraper.log")
 
+# Triagem (favoritos e descartes) versionada. Fica na RAIZ, não em saida/: é
+# entrada escrita por gente, não artefato de rodada, e o dashboard só a lê.
+# É o que sobrevive a troca de aparelho e a limpeza de dados do navegador --
+# o localStorage some com qualquer um dos dois.
+ARQUIVO_TRIAGEM = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "triagem.json")
+
 # Removido em 21/08/2026: a integração opcional com um serviço de "web
 # unlocker" comercial, cuja função declarada era contornar Cloudflare/DataDome.
 # Nunca chegou a ser ligada (as duas variáveis viviam vazias e nenhum scraper
