@@ -15,6 +15,41 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**22/08:** persistência da triagem. Relato: "marco favorito ou descarto e na
+próxima atualização tudo é desfeito".
+
+**O que foi descartado por medição, antes de mexer em qualquer coisa:**
+- Não é o mecanismo. Reproduzido o cenário exato (marcar → reescrever o HTML
+  com uma rodada nova → recarregar): sobreviveu.
+- Não é rotatividade de URL. Comparando o banco da rodada #19 com o atual, 34
+  de 35 apartamentos presentes nas duas mantêm ao menos uma URL de anúncio; só
+  1 troca por completo. E nenhuma URL muda apenas na query string.
+
+Sobra o navegador do celular não guardando os dados do site — e o defeito
+real é nosso: o `catch` vazio engolia a falha, então a marcação era aceita na
+tela e perdida na recarga, sem uma palavra. **Falha silenciosa em persistência
+é pior que funcionalidade ausente**: a pessoa confia na marcação e refaz a
+triagem inteira no dia seguinte.
+
+Três camadas, da mais durável para a mais imediata:
+
+1. **`triagem.json` na raiz, versionado.** `dashboard.py` lê e embute como
+   `SEMENTE`; é o único pedaço da triagem que sobrevive a limpeza de dados do
+   navegador e a troca de aparelho, porque mora no repositório. Arquivo
+   ausente ou quebrado não derruba a rodada (a triagem é conveniência, o
+   catálogo é o produto). Aceita `{url: data}` e também lista de urls.
+2. **Backup/restaurar** em Favoritos e na Lixeira. O arquivo baixado tem
+   exatamente a forma do `triagem.json`, então o backup não é consolo: é o
+   caminho para tornar a triagem permanente — basta o arquivo entrar no repo.
+   Restaurar faz UNIÃO, nunca substituição.
+3. **`localStorage`** segue por cima, para a marcação do dia valer na hora.
+   Agora com sonda de escrita real na carga: se o armazenamento estiver
+   bloqueado, um aviso aparece na tela em vez de nada acontecer.
+
+Achado de brinde: `display:flex` do autor vence o `[hidden]` do navegador —
+terceira vez que essa armadilha morde neste projeto (já havia regra para
+`.filtros` e `.ofertas`). O aviso e a barra de backup nasciam visíveis.
+
 **21/08 (2):** triagem no dashboard — favoritar, descartar e lixeira, mais o
 conserto de dois números que mentiam.
 
@@ -165,7 +200,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron 2x/dia: 11:13 e 21:13 UTC (08:13 e 18:13 BRT) + disparo manual.
-- 178 testes, ~3s.
+- 185 testes, ~3s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

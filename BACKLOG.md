@@ -2,6 +2,47 @@
 
 ---
 
+## Fase 7 — Persistência da triagem (22/08/2026)
+
+Relato de uso: favorito e descarte sumiam "na próxima atualização".
+
+- [x] **Duas causas prováveis eliminadas por medição, antes de tocar no
+  código.** (1) O mecanismo persiste: reproduzido o cenário exato -- marcar,
+  reescrever o HTML com uma rodada nova, recarregar -- e as marcações
+  sobreviveram. (2) Não é rotatividade de URL: comparando o banco da rodada
+  #19 com o atual, 34 dos 35 apartamentos presentes nas duas mantêm ao menos
+  uma URL de anúncio, e nenhuma URL muda só na query string. Fica registrado
+  para não refazer a investigação: a chave por URL de anúncio está correta.
+
+- [x] **A falha era silenciosa, e isso era o defeito.** O `catch` vazio do
+  `localStorage` fazia o navegador que bloqueia dados de site aceitar a
+  marcação na tela e perdê-la na recarga, sem aviso. Agora há sonda de escrita
+  de verdade na carga (grava, lê, apaga) e um aviso visível quando falha.
+  *Princípio:* falha silenciosa em persistência é pior que funcionalidade
+  ausente -- sem funcionalidade a pessoa não confia; com falha muda, ela
+  confia e perde o trabalho.
+
+- [x] **`triagem.json` versionado como semente.** Lido por `dashboard.py` e
+  embutido no HTML; é a única camada que sobrevive a limpeza de dados e a
+  troca de aparelho, porque mora no repositório e não no telefone. O
+  `localStorage` entra por cima (união), para a marcação do dia valer na hora
+  sem esperar rodada. Arquivo ausente ou ilegível volta vazio e a rodada
+  segue.
+  *Descartado de novo, agora com o motivo mais claro:* fazer a página gravar
+  direto no repositório. Página estática não tem como, e um token de escrita
+  no HTML público seria pior que o problema.
+
+- [x] **Backup/restaurar** na barra de Favoritos e Lixeira. O arquivo baixado
+  tem exatamente a forma do `triagem.json`, então serve de ponte para a camada
+  durável. Restaurar faz união, nunca substituição -- restaurar num aparelho
+  que já tem marcação não pode zerá-la.
+
+- [x] **`display:flex` vence `[hidden]`** — terceira ocorrência no projeto
+  (já havia regra para `.filtros` e `.ofertas`). Aviso e barra de backup
+  nasciam visíveis.
+
+---
+
 ## Fase 6 — Triagem no dashboard (21/08/2026)
 
 Fecha o item que estava aberto desde a Fase 4 ("Favoritos / descartados no
