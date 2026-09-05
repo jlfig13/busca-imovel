@@ -2,6 +2,32 @@
 
 ---
 
+## Fase 12 — Custo total consistente (05/09/2026)
+
+Relato: "a fonte da chave da mão não tá somando aluguel + condomínio e taxas".
+
+- [x] **O parser somava certo; o defeito era da gravação.** O UPSERT preserva
+  as partes com `COALESCE` mas sobrescrevia o total com o valor da rodada
+  atual — só o aluguel do card, quando o detalhe não foi revisitado. A linha
+  ficava com condomínio 170 e IPTU 171 e total 1.500.
+
+- [x] **Isso fabricava evento de preço.** Medido: um `1841 -> 1500` no
+  histórico, uma queda de R$ 341 que nunca existiu, em 1 dos 17 eventos de
+  preço do banco. O mesmo histórico que a Fase 11 acabou de proteger de ser
+  apagado estava sendo poluído na entrada. `_consolidar_custo()` roda antes da
+  comparação, então o evento falso deixa de nascer.
+  *Regra:* taxa conhecida manda; sem taxa, o total do card fica como está —
+  é piso, não custo, e o selo "Custo parcial" já diz isso na tela.
+
+- [x] **Cobertura das visitas ao detalhe não convergia.** 13 de 81 anúncios, e
+  sempre os mesmos 13: a seleção era `lista[:25]`. Agora desconta quem já tem
+  taxa conhecida e ordena por mais barato primeiro; com o custo grudento, a
+  cobertura acumula entre rodadas. Teto 25 -> 45.
+  *Descartado:* visitar os 81 toda rodada. São 12 rodadas por dia num site só,
+  e a acumulação resolve sem essa carga.
+
+---
+
 ## Fase 11 — Manutenção sem perder histórico (05/09/2026)
 
 - [x] **A poda existente apagava o histórico analítico.** `manutencao()` fazia

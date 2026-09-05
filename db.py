@@ -381,6 +381,64 @@ def resumo_fontes(execucao_id: int) -> list[dict]:
     return resultado
 
 
+def urls_com_taxa_conhecida(urls: list[str]) -> set[str]:
+    """URLs cujo condomínio já foi lido numa rodada anterior.
+
+    Existe para o scraper não gastar as visitas à página de detalhe com quem
+    já tem a taxa. Sem isso a seleção pegava sempre os mesmos primeiros N da
+    lista e a cobertura nunca avançava: 13 de 81 anúncios, rodada após rodada.
+
+    Com o custo agora grudento (ver _consolidar_custo), o que é lido uma vez
+    fica -- então a cobertura passa a acumular entre rodadas em vez de
+    recomeçar.
+    """
+    if not urls:
+        return set()
+    conn = conectar()
+    marcadores = ",".join("?" * len(urls))
+    achados = {
+        r[0] for r in conn.execute(
+            f"SELECT url FROM imoveis WHERE condominio IS NOT NULL "
+            f"AND url IN ({marcadores})", urls)
+    }
+    conn.close()
+    return achados
+
+
+def _consolidar_custo(item: dict, guardado: tuple | None) -> None:
+    """Faz o custo gravado ser SEMPRE a soma das partes conhecidas.
+
+    O UPSERT preserva as partes com COALESCE (condomínio e IPTU vindos de uma
+    visita anterior à página do anúncio) mas sobrescrevia o TOTAL com o valor
+    da rodada atual -- que, quando o detalhe não foi revisitado, é só o aluguel
+    do card. Resultado medido em 05/09/2026: um anúncio com partes
+    1500+170+171 gravado como 1500, e um evento de queda de R$ 341 que nunca
+    aconteceu, poluindo justamente a série de preço.
+
+    A regra: taxa conhecida manda. Sem taxa conhecida, o total do card é o
+    melhor que existe e fica como está -- é PISO, não custo, e o selo "Custo
+    parcial" no card já avisa isso.
+    """
+    if not guardado:
+        return
+    g_aluguel, g_cond, g_iptu = guardado
+    aluguel = item.get("aluguel") if item.get("aluguel") is not None else g_aluguel
+    cond = item.get("condominio") if item.get("condominio") is not None else g_cond
+    iptu = item.get("iptu") if item.get("iptu") is not None else g_iptu
+
+    if aluguel is None or cond is None:
+        return
+
+    soma = aluguel + cond + (iptu or 0)
+    declarado = item.get("custo_mensal_total") or 0
+    item["aluguel"], item["condominio"], item["iptu"] = aluguel, cond, iptu
+    # o declarado só vence quando é MAIOR: cobre o anúncio que informa um
+    # total já com centavos ou com taxa extra que não veio separada
+    item["custo_mensal_total"] = max(soma, declarado)
+    item["preco"] = item["custo_mensal_total"]
+    item["custo_completo"] = True
+
+
 def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None,
                     execucao_id: int | None = None) -> list[dict]:
     """Grava os itens encontrados na execução de hoje, atualiza
@@ -411,10 +469,15 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
     for item in itens:
         cur.execute(
             """SELECT primeiro_visto, custo_mensal_total, preco, descricao_hash,
-                      imobiliaria, COALESCE(status,'ATIVO')
+                      imobiliaria, COALESCE(status,'ATIVO'),
+                      aluguel, condominio, iptu
                FROM imoveis WHERE url = ?""", (item["url"],))
         row = cur.fetchone()
         item["descricao_hash"] = _hash_texto(item.get("descricao"))
+
+        # ANTES de comparar preços: senão o total sobrescrito vira um evento
+        # de queda que nunca aconteceu.
+        _consolidar_custo(item, (row[6], row[7], row[8]) if row else None)
 
         if row:
             primeiro_visto = row[0]

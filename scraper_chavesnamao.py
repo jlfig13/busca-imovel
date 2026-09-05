@@ -28,13 +28,19 @@ import time
 from urllib.parse import urljoin
 
 import config
+import db
 import utils
 from utils import log
 
 # Tamanho do lote de páginas de detalhe. Cada uma é um Playwright goto com
 # espera de render; 25 mantém a fonte na casa dos dois minutos, em linha com
 # as outras que usam browser.
-MAX_DETALHES = 25
+# 45 e não 25: com o envelope largo o Chaves passou de ~25 para 81 anúncios
+# por rodada. Cada visita custa ~1,5 s de browser, então 45 acrescenta pouco
+# mais de um minuto a uma rodada de 4-5 min (teto do workflow: 45 min). Não
+# são 81 de propósito: são 12 rodadas por dia num site só, e a cobertura já
+# acumula entre rodadas.
+MAX_DETALHES = 45
 
 # O payload do Next.js chega escapado dentro de uma string JS, então as
 # aspas vêm como \". Casar os dois formatos evita depender de qual página
@@ -167,8 +173,19 @@ def _completar_custos(itens: list[dict], max_detalhes: int = MAX_DETALHES) -> in
     sem nenhum valor. Um browser só, várias páginas -- abrir e fechar o
     Chromium por anúncio custaria mais que a coleta inteira.
     """
-    alvos = [i for i in itens
-             if (i.get("preco") or 0) <= config.FILTROS["preco_max"]][:max_detalhes]
+    # Quem já teve a taxa lida antes não precisa de nova visita: o custo é
+    # grudento no banco (db._consolidar_custo). Sem este desconto a seleção
+    # pegava sempre os mesmos primeiros N e a cobertura empacava -- foram 13
+    # de 81 anúncios na rodada de 05/09, repetindo os mesmos 13.
+    conhecidos = db.urls_com_taxa_conhecida([i["url"] for i in itens])
+    candidatos = [i for i in itens
+                  if (i.get("preco") or 0) <= config.FILTROS["preco_max"]
+                  and i["url"] not in conhecidos]
+    # Mais barato primeiro: com o envelope largo (R$ 800-6.000) o teto de
+    # visitas não cobre a lista inteira, e o anúncio barato é o que cabe em
+    # mais orçamentos -- é onde a taxa escondida muda mais decisão.
+    candidatos.sort(key=lambda i: i.get("preco") or 1e9)
+    alvos = candidatos[:max_detalhes]
     if not alvos:
         return 0
 

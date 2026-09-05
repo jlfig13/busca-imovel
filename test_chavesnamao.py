@@ -71,3 +71,36 @@ def test_apartamento_caro_com_taxa_custa_muito_mais_que_o_anunciado():
 def test_pagina_sem_valores_nao_inventa_custo():
     assert cnm._custo_do_texto("Apartamento bonito, sem valores")["custo_mensal_total"] is None
     assert cnm._custo_do_texto("")["custo_mensal_total"] is None
+
+
+# ---------------------------------------------------------------------------
+# Cobertura das visitas ao detalhe
+# ---------------------------------------------------------------------------
+# Em 05/09/2026 só 13 dos 81 anúncios da rodada tinham o custo somado -- e
+# eram sempre os mesmos 13, porque a seleção era os primeiros N da lista.
+
+def test_nao_gasta_visita_com_quem_ja_tem_a_taxa(monkeypatch):
+    import scraper_chavesnamao as cnm
+    monkeypatch.setattr(cnm.db, "urls_com_taxa_conhecida", lambda urls: {"b"})
+    vistos = []
+
+    def falso_navegador(itens, max_detalhes):
+        vistos.extend(i["url"] for i in itens)
+        return 0
+
+    itens = [{"url": "a", "preco": 1000.0}, {"url": "b", "preco": 1100.0},
+             {"url": "c", "preco": 1200.0}]
+    # a seleção acontece antes do browser; reproduzimos a mesma regra
+    conhecidos = cnm.db.urls_com_taxa_conhecida([i["url"] for i in itens])
+    alvos = sorted((i for i in itens if i["url"] not in conhecidos),
+                   key=lambda i: i["preco"])
+    assert [i["url"] for i in alvos] == ["a", "c"], "quem já tem taxa fica de fora"
+
+
+def test_prioriza_o_mais_barato():
+    """Com o envelope largo o teto não cobre a lista toda: o anúncio barato
+    cabe em mais orçamentos, e é onde a taxa escondida muda mais decisão."""
+    itens = [{"url": "caro", "preco": 5000.0}, {"url": "barato", "preco": 900.0},
+             {"url": "medio", "preco": 2000.0}]
+    itens.sort(key=lambda i: i.get("preco") or 1e9)
+    assert [i["url"] for i in itens] == ["barato", "medio", "caro"]

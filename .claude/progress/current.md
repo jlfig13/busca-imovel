@@ -15,6 +15,34 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**05/09 (5):** "a fonte da chave da mão não tá somando aluguel + condomínio e
+taxas". O parser somava certo; o defeito estava na GRAVAÇÃO, e produziu dado
+falso no histórico.
+
+**Causa.** O UPSERT preserva as PARTES com `COALESCE` (condomínio e IPTU lidos
+numa visita anterior à página do anúncio) mas sobrescrevia o TOTAL com o valor
+da rodada atual — que, sem revisitar o detalhe, é só o aluguel do card. O
+resultado é uma linha onde o total não bate com as próprias partes.
+
+**Consequência que só apareceu ao medir:** isso gerou um evento
+`1841 -> 1500` — uma **queda de R$ 341 que nunca aconteceu**, na mesma série
+que alimenta o selo "Baixou" do dashboard. Era 1 dos 17 eventos de preço do
+banco: 6% do sinal analítico era fabricado.
+
+**Correção:** `db._consolidar_custo()` roda ANTES da comparação de preço e faz
+o total ser sempre a soma das partes conhecidas. Taxa conhecida manda; sem
+taxa, o total do card fica como está (é piso, não custo — e o selo "Custo
+parcial" já avisa). Verificado no banco de produção: o único registro
+inconsistente volta de 1.500 para 1.841 na rodada seguinte, sozinho.
+
+**Segunda metade do relato:** só 13 dos 81 anúncios tinham o custo somado — e
+eram sempre os mesmos 13, porque a seleção pegava os primeiros N da lista.
+Agora desconta quem já tem taxa conhecida (`db.urls_com_taxa_conhecida`) e
+ordena por mais barato primeiro. Com o custo grudento, a cobertura passa a
+ACUMULAR entre rodadas em vez de recomeçar. Teto de 25 para 45 visitas: o
+Chaves passou de ~25 para 81 anúncios com o envelope largo. Não subi para 81
+de propósito — são 12 rodadas por dia num site só.
+
 **05/09 (4):** manutenção do banco — e um defeito latente achado no caminho.
 
 Eu tinha proposto podar mais cedo (de 180 para 30-45 dias). **Era errado, e a
@@ -363,7 +391,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 214 testes, ~4s.
+- 224 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada
