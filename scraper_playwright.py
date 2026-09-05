@@ -334,6 +334,63 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
     return item
 
 
+# Seletores de "próxima página", do mais padronizado para o mais específico.
+# rel="next" primeiro porque é o único que é contrato, não convenção.
+_SELETORES_PROXIMA = (
+    'link[rel="next"]',
+    'a[rel="next"]',
+    'a[aria-label*="óxima" i]',
+    'a[title*="óxima" i]',
+    'a[data-testid*="next" i]',
+    '[data-testid*="pagination" i] a[aria-label*="óxima" i]',
+)
+_SELETORES_PROXIMA_BOTAO = (
+    'button[aria-label*="óxima" i]',
+    'button[data-testid*="next" i]',
+)
+
+
+def _proxima_pagina(page_obj, url_atual: str):
+    """Acha a próxima página pelo link que o próprio site publica.
+
+    Substitui o palpite `?pagina={n}`, que estava calado e errado: o OLX
+    pagina por `?o=`, e os portais do Grupo ZAP também ignoram `pagina` nessa
+    posição -- o resultado era o site devolver a MESMA primeira página, o
+    scraper ver "0 links novos" e concluir "acabaram os imóveis". Cinco
+    fontes rodavam havia semanas trazendo só a primeira página cada.
+
+    Seguir o link do site funciona nos três portais sem tabela de exceções, e
+    continua funcionando quando um deles trocar o parâmetro -- que é o
+    problema real: parâmetro de paginação é detalhe de implementação alheia.
+
+    Devolve ("ir", href, seletor) ou ("clicar", seletor, seletor); None
+    quando não há próxima. O seletor volta junto para ir ao log: sem saber
+    por qual caminho cada portal avançou, a próxima investigação recomeça do
+    zero -- foi o que aconteceu com o `?pagina={n}`, que ninguém tinha como
+    saber que estava sendo ignorado.
+    """
+    for sel in _SELETORES_PROXIMA:
+        try:
+            href = page_obj.eval_on_selector(
+                sel, "e => e.href || e.getAttribute('href')")
+        except Exception:
+            continue
+        # href igual à atual é botão desabilitado na última página
+        if href and href != url_atual:
+            return ("ir", href, sel)
+
+    # SPA que pagina sem trocar de URL só oferece o botão. Clicar é o único
+    # caminho -- e é também o mais fiel ao que um leitor faria.
+    for sel in _SELETORES_PROXIMA_BOTAO:
+        try:
+            el = page_obj.query_selector(sel)
+        except Exception:
+            continue
+        if el and el.is_enabled() and el.is_visible():
+            return ("clicar", sel, sel)
+    return None
+
+
 def scrape(site: dict) -> list[dict]:
     try:
         from playwright.sync_api import sync_playwright
@@ -352,7 +409,6 @@ def scrape(site: dict) -> list[dict]:
     cidade_padrao = site.get("cidade", "Recife")
     espera_ms = site.get("espera_ms", 2500)
     base_url = site["url_listagem"]
-    sep = "&" if "?" in base_url else "?"
     # padrao_url_pagina: alguns sites (ex: Imovelweb) paginam por sufixo no
     # path ("-pagina-2.html"), não por query string ("?pagina=2"). Quando
     # presente, "{n}" é substituído pelo número da página.
@@ -370,19 +426,31 @@ def scrape(site: dict) -> list[dict]:
             page = ctx.new_page()
             page.add_init_script(_ANTI_BOT_SCRIPT)
 
+            # A primeira é a URL de busca; da segunda em diante quem manda é
+            # o link que o site publica (ver _proxima_pagina).
+            proximo = ("ir", base_url, "url de busca")
+
             for pagina in range(1, max_paginas + 1):
-                if pagina == 1:
-                    url = base_url
-                elif padrao_url_pagina:
-                    url = padrao_url_pagina.format(n=pagina)
-                else:
-                    url = f"{base_url}{sep}pagina={pagina}"
+                if proximo is None:
+                    log.info(
+                        f"[{site['nome']}] p{pagina - 1} foi a última: "
+                        f"o site não publica próxima página"
+                    )
+                    break
+
+                acao, alvo, via = proximo
+                if pagina > 1:
+                    log.info(f"[{site['nome']}] p{pagina} via {acao}: {via}")
                 # O Playwright não passa por utils.get_html, então o
                 # Crawl-delay precisa ser respeitado aqui também -- senão a
                 # diretiva valeria só para as fontes de requests.
-                utils.aguardar_vez(url)
+                utils.aguardar_vez(alvo if acao == "ir" else page.url)
                 try:
-                    page.goto(url, wait_until=wait_until, timeout=45000)
+                    if acao == "ir":
+                        page.goto(alvo, wait_until=wait_until, timeout=45000)
+                    else:
+                        page.click(alvo, timeout=10000)
+                        page.wait_for_load_state(wait_until, timeout=45000)
                 except Exception:
                     page.wait_for_timeout(3000)
 
@@ -463,8 +531,39 @@ def scrape(site: dict) -> list[dict]:
                         resultados.stats["reprovados"] += 1
 
                 log.info(f"[{site['nome']}] p{pagina}: {novos} links novos")
+                resultados.stats["paginas"] = pagina
                 if novos == 0:
+                    # Zero na p1 é fonte vazia; zero depois de uma página
+                    # cheia é a paginação repetindo conteúdo -- que foi
+                    # exatamente o defeito silencioso de `?pagina={n}`.
+                    # Distinguir os dois é a mesma regra de "não achar não é
+                    # não olhar", aplicada dentro da fonte.
+                    if pagina > 1:
+                        log.warning(
+                            f"[{site['nome']}] p{pagina} repetiu a página "
+                            f"anterior: a paginação não avançou"
+                        )
+                        resultados.stats["paginacao_travada"] = True
                     break
+
+                # Descobre a próxima AQUI, com a página atual ainda carregada.
+                if padrao_url_pagina:
+                    proximo = ("ir", padrao_url_pagina.format(n=pagina + 1),
+                               "padrao_url_pagina")
+                else:
+                    proximo = _proxima_pagina(page, page.url)
+
+                # Reserva por parâmetro, só quando o site não publica link
+                # nenhum. Fica DEPOIS da descoberta de propósito: o link do
+                # site é a verdade, o parâmetro é palpite nosso -- e palpite
+                # de parâmetro foi exatamente o que quebrou calado.
+                if proximo is None and site.get("param_pagina"):
+                    sep = "&" if "?" in base_url else "?"
+                    proximo = (
+                        "ir",
+                        f"{base_url}{sep}{site['param_pagina']}={pagina + 1}",
+                        f"reserva ?{site['param_pagina']}=",
+                    )
 
             browser.close()
     except Exception as e:
