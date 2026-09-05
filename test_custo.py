@@ -147,3 +147,42 @@ def test_queda_real_continua_sendo_registrada(banco):
     # valor_antes/valor_depois são TEXT no schema (o evento é genérico e
     # também guarda mudança de bairro e de anunciante)
     assert [(float(a), float(d)) for a, d in ev] == [(1841.0, 1641.0)]
+
+
+# ---------------------------------------------------------------------------
+# Fonte de card incompleto (cards_inline)
+# ---------------------------------------------------------------------------
+
+def test_cards_inline_visita_o_detalhe_quando_configurado(monkeypatch):
+    """Relatado na Cristina Mirele: R$ 1.500 na lista, R$ 3.000 ao abrir.
+
+    `cards_inline` nunca visitava a página do anúncio -- o preço era o que o
+    card dissesse. O enriquecimento roda ANTES do filtro, como no
+    scraper_playwright: é justamente o veredito que muda.
+    """
+    import scraper_cards_inline as sci
+    chamadas = []
+    monkeypatch.setattr(sci.detalhe_custo, "enriquecer",
+                        lambda itens: chamadas.append(len(itens)) or 0)
+
+    html = '''<div><a href="/imovel/1/apartamento-locacao-olinda-pe-x">
+      Apartamento para locação</a> R$ 1.500 3 quartos 80 m²</div>'''
+    site = {"nome": "Cristina Mirele Imóveis", "base_url": "https://x.com",
+            "padrao_link_imovel": "-locacao-", "cidade": "Olinda",
+            "custo_no_detalhe": True}
+    sci._extrair_pagina(html, site, set(), sci.utils.ListaComStats())
+    assert chamadas, "a fonte configurada tem de passar pelo detalhe"
+
+
+def test_cards_inline_sem_a_marca_nao_visita_nada(monkeypatch):
+    """Visita é requisição: fonte cujo card já traz o custo não paga isso."""
+    import scraper_cards_inline as sci
+    chamadas = []
+    monkeypatch.setattr(sci.detalhe_custo, "enriquecer",
+                        lambda itens: chamadas.append(len(itens)) or 0)
+    html = '''<div><a href="/imovel/1/apartamento-locacao-olinda-pe-x">
+      Apartamento para locação</a> R$ 1.500 3 quartos 80 m²</div>'''
+    site = {"nome": "Outra", "base_url": "https://x.com",
+            "padrao_link_imovel": "-locacao-", "cidade": "Olinda"}
+    sci._extrair_pagina(html, site, set(), sci.utils.ListaComStats())
+    assert not chamadas

@@ -454,6 +454,12 @@ SITES = [
         # dos anúncios reais é sempre .../imovel/<id>/apartamento-locacao-olinda-pe-<bairro>-<edificio>
         # Validado ao vivo: preço e área extraídos; o site não expõe quartos
         # no card da listagem.
+        # O card mostra um valor que não é o custo real: relatado R$ 1.500 na
+        # lista e R$ 3.000 ao abrir o anúncio. A página tem os números, então
+        # vale a visita -- o mesmo mecanismo que corrigiu o CTI de 1.850 para
+        # 2.997. Conservador por construção: só sobrescreve quando a página
+        # informa custo COMPLETO; do contrário deixa como está.
+        "custo_no_detalhe": True,
         "nome": "Cristina Mirele Imóveis",
         "tipo": "cards_inline",
         "url_listagem": "https://www.cristinamireleimoveis.com.br/imovel/?finalidade=locacao&tipo=apartamento",

@@ -8,30 +8,43 @@ velocidade e sensação de premium.
 
 DECISÕES DE COR -- por que estas e não outras
 ---------------------------------------------
-As cores vêm do lugar, não de uma paleta genérica de imobiliária.
+Em 05/09/2026 a paleta foi trocada por decisão de produto, junto com a
+adoção de um logo e de um design system próprios. A mudança é de
+personalidade, não de tom: o projeto deixou de ser ferramenta pessoal e
+passou a ser algo que outra pessoa usa com o critério dela (preferências
+editáveis na tela). Registro do que havia antes, para a decisão não parecer
+gratuita: azul-Atlântico #10495B com ocre-Olinda #C2703D, neutros de viés
+quente, nenhum gradiente.
 
-  Azul-Atlântico (#10495B) -- o mar de Boa Viagem e a água do Capibaribe.
-  É a cor institucional: escura o bastante para ser lida como precisão e
-  seriedade, dessaturada o bastante para não competir com o dado.
+  Azul principal (#0EA5E9) -- confiança, tecnologia, clareza. É a cor de
+  ação e de identidade. Mais saturada que o antigo azul institucional: o
+  produto agora se apresenta, não só informa.
 
-  Ocre-Olinda (#C2703D) -- as fachadas coloniais do Sítio Histórico. Entra
-  SÓ como destaque pontual (oportunidade, queda de preço). Um acento único
-  e quente contra um fundo frio é o que dá calor sem virar "carnaval".
+  Azul escuro (#0F2D52) -- profundidade e estabilidade. É o chão do modo
+  noturno e o contorno do símbolo.
 
-O óbvio seria usar as cores do frevo ou da bandeira de Pernambuco. Ficaria
-saturado e brincalhão -- o oposto de "dados confiáveis". A referência aqui é
-a arquitetura e a água, não a festa.
+  Turquesa (#14B8A6 / --bom) -- ação e coisa boa: imóvel novo, fonte
+  confirmando, custo completo.
 
-Neutros têm viés quente (a cal caiada dos casarios), não cinza puro: cinza
-neutro em fundo branco lê como "não pensado".
+  Laranja (#FB923C / --ocre) -- dinamismo e atenção. Continua sendo o acento
+  pontual, agora em "baixou de preço".
+
+  Amarelo (#FBBF24 / --atencao) -- cultura e destaque; é o alerta que não é
+  erro (custo parcial, fonte divergindo).
+
+Os neutros deixaram de ter viés quente e passaram a ser a escala fria do
+design system (#0B1220 a #F3F4F6). O motivo antigo (a cal caiada dos
+casarios) casava com o azul-petróleo; com o azul saturado, neutro quente
+briga em vez de acompanhar.
 
 O QUE O SISTEMA EVITA, DE PROPÓSITO
 ------------------------------------
-  - Cards coloridos: a superfície é branca; a cor carrega significado, não
+  - Cards coloridos: a superfície é neutra; a cor carrega significado, não
     decoração.
   - Bordas em tudo: separação por divisor de 1px e por espaço. Caixa dentro
     de caixa é o visual de dashboard corporativo.
-  - Gradiente: nenhum. Superfície chapada lê como precisão.
+  - Gradiente na interface: existe UM, no símbolo da marca, e ele fica lá.
+    Superfície chapada lê como precisão; gradiente em card lê como banner.
   - Informação simultânea: o essencial fica visível, o resto expande.
 
 Referências de linguagem: Linear (hierarquia e ritmo vertical), Vercel
@@ -46,35 +59,35 @@ CSS_TOKENS = """
 :root{
   /* superfícies -- branco puro é o chão; os degraus são quentes */
   --fundo:#FFFFFF;
-  --superficie:#FAFAF9;
-  --superficie-2:#F4F3F0;
-  --superficie-3:#EBE9E5;
+  --superficie:#F7F9FB;
+  --superficie-2:#F3F4F6;
+  --superficie-3:#E5E7EB;
 
   /* linhas: uma só espessura, sempre discreta */
-  --linha:#E5E3DE;
-  --linha-forte:#CFCCC5;
+  --linha:#E5E7EB;
+  --linha-forte:#CBD5E1;
 
   /* tinta */
-  --tinta:#15191C;
-  --tinta-media:#4A535C;
-  --tinta-suave:#727C87;
-  --tinta-fraca:#9AA2AB;
+  --tinta:#0B1220;
+  --tinta-media:#475569;
+  --tinta-suave:#64748B;
+  --tinta-fraca:#94A3B8;
 
   /* institucional -- Atlântico */
-  --mar:#10495B;
-  --mar-claro:#1B6B84;
-  --mar-lavado:#EAF2F5;
+  --mar:#0EA5E9;
+  --mar-claro:#38BDF8;
+  --mar-lavado:#E0F2FE;
 
   /* acento -- ocre de Olinda, usado com parcimônia */
-  --ocre:#C2703D;
-  --ocre-lavado:#FBF0E8;
+  --ocre:#FB923C;
+  --ocre-lavado:#FFF1E6;
 
   /* semânticas: separadas do acento de propósito */
-  --bom:#1B7A5A;      --bom-lavado:#E8F4EF;
-  --atencao:#9A6A12;  --atencao-lavado:#FBF1DE;
-  --ruim:#A8443A;     --ruim-lavado:#FAECEA;
+  --bom:#0D9488;      --bom-lavado:#E6FAF7;
+  --atencao:#B45309;  --atencao-lavado:#FEF3DC;
+  --ruim:#DC2626;     --ruim-lavado:#FDECEC;
 
-  --foco:#1B6B84;
+  --foco:#0EA5E9;
   --sombra:0 1px 2px rgba(21,25,28,.05), 0 1px 8px rgba(21,25,28,.04);
 
   --sans:'Inter','Inter var',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
@@ -90,48 +103,48 @@ CSS_TOKENS = """
    fica com aparência de sujo. */
 @media (prefers-color-scheme: dark){
   :root:not([data-tema="claro"]){
-    --fundo:#0D1114;
-    --superficie:#141A1E;
-    --superficie-2:#1B2227;
-    --superficie-3:#232B31;
-    --linha:#242C32;
-    --linha-forte:#36414A;
-    --tinta:#E9ECEE;
-    --tinta-media:#AEB7BF;
-    --tinta-suave:#8B959E;
-    --tinta-fraca:#69737C;
-    --mar:#7FC3D8;
-    --mar-claro:#A5D8E7;
-    --mar-lavado:#122A33;
-    --ocre:#E3A277;
-    --ocre-lavado:#2E2018;
-    --bom:#6FCFA6;      --bom-lavado:#12291F;
-    --atencao:#DCB05A;  --atencao-lavado:#2B2312;
-    --ruim:#E8938A;     --ruim-lavado:#2E1B18;
-    --foco:#7FC3D8;
+    --fundo:#0B1220;
+    --superficie:#111C2E;
+    --superficie-2:#16243A;
+    --superficie-3:#1E3050;
+    --linha:#1E3050;
+    --linha-forte:#2F4463;
+    --tinta:#E8EEF6;
+    --tinta-media:#A7B6C9;
+    --tinta-suave:#8496AC;
+    --tinta-fraca:#63758C;
+    --mar:#38BDF8;
+    --mar-claro:#7DD3FC;
+    --mar-lavado:#0C2A44;
+    --ocre:#FDBA74;
+    --ocre-lavado:#33210F;
+    --bom:#2DD4BF;      --bom-lavado:#0C2E2B;
+    --atencao:#FBBF24;  --atencao-lavado:#2E2410;
+    --ruim:#F87171;     --ruim-lavado:#331717;
+    --foco:#38BDF8;
     --sombra:0 1px 2px rgba(0,0,0,.4), 0 1px 8px rgba(0,0,0,.25);
   }
 }
 :root[data-tema="escuro"]{
-  --fundo:#0D1114;
-  --superficie:#141A1E;
-  --superficie-2:#1B2227;
-  --superficie-3:#232B31;
-  --linha:#242C32;
-  --linha-forte:#36414A;
-  --tinta:#E9ECEE;
-  --tinta-media:#AEB7BF;
-  --tinta-suave:#8B959E;
-  --tinta-fraca:#69737C;
-  --mar:#7FC3D8;
-  --mar-claro:#A5D8E7;
-  --mar-lavado:#122A33;
-  --ocre:#E3A277;
-  --ocre-lavado:#2E2018;
-  --bom:#6FCFA6;      --bom-lavado:#12291F;
-  --atencao:#DCB05A;  --atencao-lavado:#2B2312;
-  --ruim:#E8938A;     --ruim-lavado:#2E1B18;
-  --foco:#7FC3D8;
+  --fundo:#0B1220;
+  --superficie:#111C2E;
+  --superficie-2:#16243A;
+  --superficie-3:#1E3050;
+  --linha:#1E3050;
+  --linha-forte:#2F4463;
+  --tinta:#E8EEF6;
+  --tinta-media:#A7B6C9;
+  --tinta-suave:#8496AC;
+  --tinta-fraca:#63758C;
+  --mar:#38BDF8;
+  --mar-claro:#7DD3FC;
+  --mar-lavado:#0C2A44;
+  --ocre:#FDBA74;
+  --ocre-lavado:#33210F;
+  --bom:#2DD4BF;      --bom-lavado:#0C2E2B;
+  --atencao:#FBBF24;  --atencao-lavado:#2E2410;
+  --ruim:#F87171;     --ruim-lavado:#331717;
+  --foco:#38BDF8;
   --sombra:0 1px 2px rgba(0,0,0,.4), 0 1px 8px rgba(0,0,0,.25);
 }
 """
@@ -166,16 +179,14 @@ a{color:inherit;}
   max-width:1080px; margin:0 auto; height:56px;
 }
 .marca{display:flex; align-items:center; gap:9px; font-weight:640; letter-spacing:-.015em;}
+/* O símbolo traz cor própria (gradiente turquesa->azul), então dispensa a
+   caixa de fundo que o ícone de traço precisava para ter contraste -- e
+   dispensa a inversão por tema: identidade não troca de cor. */
 .marca-glifo{
-  width:22px; height:22px; border-radius:5px; flex-shrink:0;
-  background:var(--mar); display:grid; place-items:center;
+  width:28px; height:28px; flex-shrink:0;
+  display:grid; place-items:center;
 }
-.marca-glifo svg{width:13px; height:13px; stroke:#fff; fill:none; stroke-width:2;}
-:root[data-tema="escuro"] .marca-glifo svg,
-:root:not([data-tema="claro"]) .marca-glifo svg{stroke:#0D1114;}
-@media (prefers-color-scheme: light){
-  :root:not([data-tema="escuro"]) .marca-glifo svg{stroke:#fff;}
-}
+.marca-glifo svg{width:28px; height:28px;}
 .marca-sub{
   font-family:var(--mono); font-size:11px; color:var(--tinta-fraca);
   letter-spacing:.02em; font-weight:400;
@@ -220,17 +231,47 @@ a{color:inherit;}
 
 /* ---------- pulso: os números que importam ---------- */
 .pulso{
-  display:grid; grid-template-columns:repeat(auto-fit, minmax(112px, 1fr));
-  gap:18px 0; padding:26px 0 22px;
+  display:grid; grid-template-columns:repeat(3, 1fr);
+  gap:8px; padding:18px 0 10px;
 }
-.pulso-item{padding:0 20px; border-left:1px solid var(--linha);}
-.pulso-item:first-child{padding-left:0; border-left:0;}
+/* Cartão, não coluna. O divisor de 1px funcionava com neutro quente e pouca
+   cor; com a paleta nova o número precisa de superfície própria para não
+   flutuar. O ícone entra só onde ele nomeia a métrica -- em "Mediana R$/m²"
+   seria enfeite. */
+.pulso-item{
+  display:flex; align-items:center; gap:9px; min-width:0;
+  padding:11px 12px; border-radius:var(--r-card);
+  background:var(--superficie); border:1px solid var(--linha);
+}
+/* Em três colunas num telefone o rótulo não cabe ao lado do ícone: vira
+   empilhado, que é como o design system desenha o tile pequeno. */
+@media (max-width:520px){
+  .pulso-item{flex-direction:column; align-items:flex-start; gap:7px;}
+}
+/* Linha de contexto: número no meio da frase, sem cartão. Cartão aqui
+   competiria com os três tiles pela mesma atenção. */
+.pulso-sec{
+  display:flex; flex-wrap:wrap; gap:6px 16px; margin:0 0 4px;
+  font-size:12.5px; color:var(--tinta-suave);
+}
+.pulso-sec b{color:var(--tinta); font-weight:600;
+  font-variant-numeric:tabular-nums;}
+.pulso-sec small{font-size:12px;}
+.pulso-icone{
+  width:32px; height:32px; flex:none; border-radius:9px;
+  display:grid; place-items:center;
+  background:var(--mar-lavado); color:var(--mar);
+}
+.pulso-icone svg{width:17px; height:17px; stroke:currentColor; fill:none;
+  stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;}
+.pulso-icone.novo{background:var(--bom-lavado); color:var(--bom);}
+.pulso-icone.queda{background:var(--ocre-lavado); color:var(--ocre);}
 .pulso-rot{
   font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
   text-transform:uppercase; color:var(--tinta-fraca); margin-bottom:4px;
 }
 .pulso-val{
-  font-size:26px; font-weight:620; letter-spacing:-.03em;
+  font-size:22px; font-weight:620; letter-spacing:-.03em;
   font-variant-numeric:tabular-nums; line-height:1.1;
 }
 .pulso-val small{font-size:13px; font-weight:400; color:var(--tinta-suave); letter-spacing:0;}
@@ -297,7 +338,6 @@ a{color:inherit;}
    "3 baixaram" e não há como chegar nos três: era preciso abrir o painel de
    filtros e lembrar que existe um chip lá dentro. */
 .pulso-item.acionavel{
-  border:0; border-left:1px solid var(--linha); background:transparent;
   font:inherit; text-align:left; cursor:pointer; color:inherit;
 }
 .pulso-item.acionavel:hover .pulso-val{text-decoration:underline; text-underline-offset:3px;}
@@ -723,7 +763,10 @@ a{color:inherit;}
 /* O selo da sugestão é o único que usa o acento quente cheio: é a única
    marca da tela que diz "olhe este aqui primeiro". */
 .selo-melhor{background:var(--ocre); color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.22);}
-.selo-novo{background:var(--mar); color:#fff;}
+/* Turquesa, não azul: no design system o azul é a cor de AÇÃO (botão,
+   link, foco). Gastar o azul num selo informativo tira dele a função de
+   dizer "aqui se clica". */
+.selo-novo{background:var(--bom); color:#fff;}
 .selo-queda{background:var(--ocre); color:#fff;}
 .foto-selos .selo{box-shadow:0 1px 3px rgba(0,0,0,.22);}
 .selo-fontes{background:var(--bom-lavado); color:var(--bom);}
@@ -857,18 +900,12 @@ a{color:inherit;}
   .marca{font-size:14.5px; gap:8px; min-width:0;}
   .btn-tema{width:40px; height:40px;}
 
-  /* Pulso em duas colunas: com auto-fit o rótulo "Mediana R$/m²" quebrava
-     em três linhas. A faixa de preço ocupa a linha inteira porque é o
-     único item com dois números. */
-  .pulso{grid-template-columns:1fr 1fr; gap:0; padding:14px 0 16px;}
-  .pulso-item{
-    padding:10px 0 10px 14px;
-    border-left:1px solid var(--linha); border-top:1px solid var(--linha);
-  }
-  .pulso-item:nth-child(odd){padding-left:0; border-left:0;}
-  .pulso-item:nth-child(1),.pulso-item:nth-child(2){border-top:0;}
-  .pulso-item:last-child{grid-column:1 / -1; padding-left:0; border-left:0;}
-  .pulso-val{font-size:21px;}
+  /* O pulso já nasce em três colunas de cartão (ver acima). O bloco que
+     existia aqui vinha da versão de divisores em duas colunas e sobrescrevia
+     o novo -- foi o que fez "Baixaram" ocupar a linha inteira. Sobra o ajuste
+     de tipo, que é o único específico de telefone. */
+  .pulso-val{font-size:19px;}
+  .pulso-rot{font-size:9.5px; letter-spacing:.08em;}
 
   /* Filtros: três chips numa linha, campos em duas colunas. */
   .filtros{gap:8px; padding-bottom:12px;}
@@ -928,7 +965,11 @@ a{color:inherit;}
 
 # Ícones: traço de 1.7px, 16px de caixa, mesma família geométrica.
 ICONES = {
-    "marca": '<svg viewBox="0 0 20 20"><path d="M3 9.5 10 3.5l7 6"/><path d="M5 9v7.5h10V9"/><path d="M8.5 16.5v-4h3v4"/></svg>',
+    # O símbolo da marca, desenhado à mão (ver marca/simbolo.svg). Não é
+    # ícone de traço como os outros: tem preenchimento e gradiente próprios,
+    # então NÃO herda currentColor -- é a única exceção da biblioteca, e é de
+    # propósito: identidade não muda de cor com o tema.
+    "marca": '<svg viewBox="0 0 64 64" aria-hidden="true"> <defs> <linearGradient id="ma-pin" x1="0" y1="1" x2="1" y2="0"> <stop offset="0" stop-color="#14B8A6"/> <stop offset="1" stop-color="#0EA5E9"/> </linearGradient> </defs> <path fill="url(#ma-pin)" d="M32 4a22 22 0 0 1 15.6 37.6L32 60 16.4 41.6A22 22 0 0 1 32 4Z"/> <path fill="#fff" fill-rule="evenodd" d="M32 12 48.5 25.4v1.6h-4.5V39a2 2 0 0 1-2 2h-20a2 2 0 0 1-2-2V27h-4.5v-1.6L32 12Z M26.5 27.5v4.2h4.2v-4.2h-4.2Z M33.3 27.5v4.2h4.2v-4.2h-4.2Z M26.5 34.3v4.2h4.2v-4.2h-4.2Z M33.3 34.3v4.2h4.2v-4.2h-4.2Z"/> <g transform="translate(35.5 33.5)"> <circle cx="9" cy="9" r="10.5" fill="#0F2D52"/> <circle cx="9" cy="9" r="8" fill="#fff"/> <circle cx="9" cy="9" r="5.4" fill="#0EA5E9" opacity=".22"/> <path d="M15.4 15.4 21.5 21.5" stroke="#0F2D52" stroke-width="4.2" stroke-linecap="round"/> <path d="M15.4 15.4 20.6 20.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/> </g> </svg>',
     "local": '<svg viewBox="0 0 20 20"><path d="M10 17.5s5.5-4.8 5.5-9a5.5 5.5 0 0 0-11 0c0 4.2 5.5 9 5.5 9Z"/><circle cx="10" cy="8.5" r="1.9"/></svg>',
     "busca": '<svg viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.4"/><path d="m16.5 16.5-3.9-3.9"/></svg>',
     "externo": '<svg viewBox="0 0 20 20"><path d="M11.5 4H16v4.5"/><path d="M16 4 9.5 10.5"/><path d="M15 12v3.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3.5"/></svg>',
@@ -941,6 +982,9 @@ ICONES = {
     "lua": '<svg viewBox="0 0 20 20"><path d="M16.5 11.8A6.8 6.8 0 0 1 8.2 3.5a6.8 6.8 0 1 0 8.3 8.3Z"/></svg>',
     "foto": '<svg viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.2" r="1.3"/><path d="m3.5 14 4-3.6 3 2.6 2.6-2.2 3.4 3"/></svg>',
     "vazio": '<svg viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.4"/><path d="m16.5 16.5-3.9-3.9"/></svg>',
+    "casa": '<svg viewBox="0 0 20 20"><path d="M3 8.5 10 3l7 5.5"/><path d="M5 8v8.5h10V8"/></svg>',
+    "mais": '<svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>',
+    "baixou": '<svg viewBox="0 0 20 20"><path d="M10 4.5v11"/><path d="m5.5 11 4.5 4.5 4.5-4.5"/></svg>',
     "descartar": '<svg viewBox="0 0 20 20"><path d="m6 6 8 8M14 6l-8 8"/></svg>',
     "restaurar": '<svg viewBox="0 0 20 20"><path d="M4 10a6 6 0 1 1 1.8 4.3"/><path d="M4 5.5V10h4.5"/></svg>',
     "lixeira": '<svg viewBox="0 0 20 20"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.7 9.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L14 6"/></svg>',

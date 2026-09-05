@@ -2,6 +2,32 @@
 
 ---
 
+## Fase 13 — Design system e marca (05/09/2026)
+
+- [x] **Paleta trocada por decisão de produto.** Azul #0EA5E9 (ação e
+  identidade), turquesa #14B8A6, laranja #FB923C, amarelo #FBBF24, neutros
+  frios. Substituem azul-Atlântico #10495B, ocre-Olinda #C2703D e neutros de
+  viés quente. *Motivo registrado no `design.py`:* o projeto deixou de ser
+  ferramenta pessoal e passou a ser algo que outra pessoa usa com o critério
+  dela — a paleta acompanha essa mudança de personalidade.
+
+- [x] **Símbolo em SVG desenhado à mão** (`marca/simbolo.svg`, 1,7 KB).
+  *Descartado:* vetorizar o PNG com `vtracer` (instalado e testado). Um traço
+  automático gera centenas de caminhos, pesa dezenas de KB e não permite
+  controlar cor por tema. Três formas e um gradiente leem melhor a 16px.
+
+- [x] **KPI em tile com ícone, três em vez de seis.** Seis cartões empilhavam
+  em quatro linhas num telefone. Os três que ficam respondem "o que mudou
+  desde ontem"; contexto foi para linha compacta.
+
+- [x] **"Novo" de azul para turquesa**, para o azul ficar reservado à ação.
+
+- [ ] **Cena completa da marca** (skyline + Olinda) ainda não vetorizada. Faz
+  sentido como asset de divulgação, não no dashboard: seria 100-300 KB num
+  arquivo que é único e precisa abrir no celular.
+
+---
+
 ## Fase 12 — Custo total consistente (05/09/2026)
 
 Relato: "a fonte da chave da mão não tá somando aluguel + condomínio e taxas".

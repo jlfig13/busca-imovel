@@ -15,6 +15,41 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**05/09 (6):** design system aplicado + preço da Cristina Mirele.
+
+**Cristina Mirele: R$ 1.500 na lista, R$ 3.000 ao abrir.** Causa diferente do
+Chaves na Mão: o tipo `cards_inline` **nunca visitava a página do anúncio** —
+o preço era o que o card dissesse, sem correção. O mecanismo que consertou o
+CTI (1.850 → 2.997) existia mas só estava ligado no scraper do Playwright.
+Agora `cards_inline` também honra `custo_no_detalhe`, com o enriquecimento
+ANTES do filtro (é o veredito que muda). Conservador: só sobrescreve quando a
+página informa custo completo.
+
+**Design system aplicado** (paleta, símbolo, componentes):
+
+- Tokens trocados nos três blocos (claro, `prefers-color-scheme`, `[data-tema]`):
+  azul #0EA5E9 como cor de ação e identidade, turquesa #14B8A6 em `--bom`,
+  laranja #FB923C em `--ocre`, amarelo #FBBF24 em `--atencao`, e a escala
+  neutra fria (#0B1220 a #F3F4F6) no lugar dos neutros quentes.
+- O racional no cabeçalho do `design.py` foi reescrito. Deixar o texto antigo
+  (azul-Atlântico, ocre-Olinda, neutros quentes) seria manter uma justificativa
+  que não descreve mais o sistema. O que havia antes ficou registrado, para a
+  troca não parecer gratuita.
+- **Símbolo desenhado à mão em SVG** (1,7 KB) no lugar do ícone de traço.
+  Vetorizar o PNG geraria centenas de caminhos e dezenas de KB. É a única
+  exceção da biblioteca de ícones: tem cor própria e não herda `currentColor`
+  — identidade não muda com o tema.
+- **KPI virou tile com ícone**, como no design system. **Três**, não seis: seis
+  cartões empilhavam em quatro linhas no telefone e empurravam a lista para
+  fora da tela. Os três são os que respondem "o que mudou desde ontem"; o
+  resto foi para uma linha compacta.
+- **"Novo" passou de azul para turquesa.** O azul agora é a cor de ação
+  (botão, link, foco) — gastá-lo num selo informativo tira dele a função de
+  dizer "aqui se clica".
+- Achado no caminho: uma regra de telefone da versão antiga (pulso em duas
+  colunas com divisores) sobrescrevia a grade nova e fazia "Baixaram" ocupar a
+  linha inteira. Removida.
+
 **05/09 (5):** "a fonte da chave da mão não tá somando aluguel + condomínio e
 taxas". O parser somava certo; o defeito estava na GRAVAÇÃO, e produziu dado
 falso no histórico.
@@ -391,7 +426,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 224 testes, ~4s.
+- 226 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

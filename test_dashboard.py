@@ -98,8 +98,8 @@ def test_acesso_a_localStorage_e_protegido(ambiente):
 def test_pulso_liga_o_filtro(ambiente):
     """O contador dizia "3 baixaram" e não havia como chegar nos três."""
     html = _html(ambiente, [_imovel()])
-    assert "acao('Novos hoje', novos, 'novos')" in html
-    assert "acao('Baixaram', quedas, 'quedas')" in html
+    assert "acao('Novos hoje', novos, 'novos'" in html
+    assert "acao('Baixaram', quedas, 'quedas'" in html
     assert "function ligarChip(nome)" in html
 
 

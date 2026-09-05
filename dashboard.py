@@ -368,6 +368,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   <!-- Desenhado em JS: os números mudam com o escopo (meus bairros / todos),
        e um pulso fixo diria "19 imóveis" numa tela mostrando 45. -->
   <section class="pulso" id="pulso" aria-label="Resumo da busca"></section>
+  <p class="pulso-sec" id="pulso-sec"></p>
 
   <div class="escopo" role="group" aria-label="Recorte da lista">
     <button class="chip-escopo" id="e-meus" type="button" aria-pressed="true">
@@ -525,7 +526,8 @@ const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
 const PREFS_PADRAO = {json_prefs};
 const BAIRROS_POR_CIDADE = {json_bairros};
 const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto', 'seta',
-                        'estrela', 'descartar', 'restaurar', 'lixeira')}, ensure_ascii=False)};
+                        'estrela', 'descartar', 'restaurar', 'lixeira',
+                        'casa', 'mais', 'baixou')}, ensure_ascii=False)};
 
 /* ---------- tema ---------- */
 const raiz = document.documentElement;
@@ -811,33 +813,46 @@ function pintarPulso(){{
   const mediana = m2.length ? m2[Math.floor(m2.length/2)].toFixed(0) : '—';
   const precos = base.map(d => d.preco).filter(v => v != null);
   const faixa = precos.length
-    ? `${{fmtBRL(Math.min(...precos))}}<small>a ${{fmtBRL(Math.max(...precos))}}</small>`
+    ? `${{fmtBRL(Math.min(...precos))}}<small> a ${{fmtBRL(Math.max(...precos))}}</small>`
     : '—';
 
-  const item = (rot, val, destaque) =>
-    `<div class="pulso-item${{destaque ? ' destaque' : ''}}">
-       <div class="pulso-rot">${{rot}}</div><div class="pulso-val">${{val}}</div></div>`;
+  const icone = (nome, classe) => nome
+    ? `<div class="pulso-icone ${{classe || ''}}">${{IC[nome]}}</div>` : '';
+
+  const item = (rot, val, destaque, ic, classe) =>
+    `<div class="pulso-item${{destaque ? ' destaque' : ''}}">${{icone(ic, classe)}}
+       <div><div class="pulso-rot">${{rot}}</div>
+       <div class="pulso-val">${{val}}</div></div></div>`;
 
   /* "Novos hoje" e "Baixaram" são os dois números que respondem "o que mudou
      desde ontem" -- e eram os únicos sem resposta: o contador dizia 3 e não
      havia como chegar nos três, porque o filtro correspondente mora dentro do
      painel recolhido. Aqui o número É o filtro. */
-  const acao = (rot, val, chip) =>
+  const acao = (rot, val, chip, ic, classe) =>
     `<button class="pulso-item acionavel" type="button" data-chip="${{chip}}"
              aria-pressed="${{chips[chip].getAttribute('aria-pressed')}}">
-       <div class="pulso-rot">${{rot}}</div><div class="pulso-val">${{val}}</div></button>`;
+       ${{icone(ic, classe)}}
+       <div><div class="pulso-rot">${{rot}}</div>
+       <div class="pulso-val">${{val}}</div></div></button>`;
 
   // o contador da aba acompanha o escopo: dizer "54" com 16 na tela faria
   // parecer que o filtro comeu imóvel
   el('n-aba-imoveis').textContent = base.length;
 
+  /* Três tiles, não seis. O design system mostra três, e há razão de sobra:
+     seis cartões empilham em quatro linhas num telefone e empurram a lista
+     de imóveis para fora da tela. Os três que viram tile são os que
+     respondem "o que mudou desde ontem"; o resto é contexto e vai numa linha
+     compacta, legível sem ocupar altura. */
   pulso.innerHTML =
-    item('Imóveis', base.length) +
-    acao('Novos hoje', novos, 'novos') +
-    acao('Baixaram', quedas, 'quedas') +
-    item('Multi-fonte', multi) +
-    item('Mediana R$/m²', mediana) +
-    item('Faixa', faixa);
+    item('Imóveis', base.length, false, 'casa') +
+    acao('Novos hoje', novos, 'novos', 'mais', 'novo') +
+    acao('Baixaram', quedas, 'quedas', 'baixou', 'queda');
+
+  el('pulso-sec').innerHTML =
+    `<span><b>${{multi}}</b> multi-fonte</span>` +
+    `<span>mediana <b>${{mediana}}</b> R$/m²</span>` +
+    `<span>${{faixa}}</span>`;
 
   pulso.querySelectorAll('.acionavel').forEach(b =>
     b.addEventListener('click', () => ligarChip(b.dataset.chip)));
