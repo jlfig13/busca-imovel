@@ -14,6 +14,11 @@ saida/_preview*.html
 # o histórico de preço/"primeiro visto" sobrevive entre rodadas semanais
 # do GitHub Actions (ver .github/workflows/scrape.yml).
 
+# Prévia da marca: gerada por script para conferir o SVG em vários tamanhos.
+# É binário e regenerável, e o repositório já commita banco a cada rodada --
+# não vale um PNG a mais no histórico.
+marca/preview.png
+
 _site/
 .venv/
 venv/
