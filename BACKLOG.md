@@ -2,6 +2,36 @@
 
 ---
 
+## Fase 11 — Manutenção sem perder histórico (05/09/2026)
+
+- [x] **A poda existente apagava o histórico analítico.** `manutencao()` fazia
+  `DELETE FROM evento` junto com o anúncio inativo. Medido no banco real:
+  disparar levaria 591 eventos e 7 das 17 mudanças de preço — 41% do sinal.
+  Latente, não visível: o corte era 180 dias e o projeto tem 17 de vida.
+  *Registro honesto:* a proposta anterior deste assistente era cortar para
+  30-45 dias, o que teria destruído isso na rodada seguinte. Quem barrou foi o
+  usuário, perguntando pelo dado analítico.
+
+- [x] **Regra nova: separar apresentação de histórico.** Fotos e descrição de
+  anúncio fora do ar viram NULL (o card não existe mais, e as URLs de foto dos
+  portais expiram sozinhas). Linha e eventos ficam para sempre — 200 bytes por
+  anúncio é o preço de poder responder "quanto valorizou este bairro".
+  Medido: 2.108 KB → 1.872 KB, com 1.257 eventos e 915 linhas intactos.
+  Seguro porque o UPSERT usa `COALESCE(excluded.fotos, imoveis.fotos)`: se o
+  anúncio voltar, a rodada repõe.
+
+- [ ] **Histórico em arquivo append-only (Parquet ou CSV por dia).** Ideia do
+  usuário, adiada com motivo. O que faz o repositório crescer não é o formato:
+  é reescrever um binário de 2 MB doze vezes por dia. Um arquivo por dia faz o
+  git guardar só o dado novo. Mas só se paga junto com parar de versionar o
+  `.db` a cada rodada — e aí ele precisa ser reconstruído do histórico no
+  início da rodada, que é a parte cara.
+  *Gatilho medido para fazer:* `.git` passar de 200 MB. Hoje: 5,3 MB após 55
+  commits de dados (~96 KB por commit, porque o git faz delta entre versões do
+  SQLite). Projeção com 12 rodadas/dia: 30 a 75 MB/mês.
+
+---
+
 ## Fase 10 — Filtros livres e preferência do usuário (05/09/2026)
 
 Pedido: escolher faixa de valor, bairros, cidade, quartos e área livremente, e

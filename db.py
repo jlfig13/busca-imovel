@@ -513,12 +513,6 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
     return itens
 
 
-# Anúncio INATIVO mais velho que isto é removido, junto com seus eventos.
-# 180 dias porque a análise de mercado usa janela de 90 dias e a detecção de
-# republicação olha 90 -- o dobro dá folga para as duas sem guardar lixo.
-DIAS_PARA_PODA = 180
-
-
 def atualizar_fotos(fotos_por_url: dict[str, list]) -> int:
     """Grava a galeria coletada depois da rodada.
 
@@ -635,36 +629,43 @@ def rendimento_por_fonte(ultimas: int = 10) -> list[dict]:
 
 
 def manutencao(vacuum: bool = False) -> dict:
-    """Poda anúncios inativos antigos e, opcionalmente, compacta o banco.
+    """Enxuga o banco SEM tocar no histórico analítico.
 
-    O banco é comitado no repositório a cada rodada e SQLite é binário: cada
-    commit reescreve o arquivo inteiro. Com cadência diária e sem poda, o
-    repositório ganha centenas de KB por dia de histórico git irrecuperável.
+    O banco é comitado no repositório a cada rodada e SQLite é binário, então
+    o que cresce sem controle vira peso permanente no git. Mas a versão
+    anterior desta função resolvia isso do jeito errado: apagava a linha em
+    `imoveis` E os `evento` do anúncio inativo. Medido em 05/09/2026, isso
+    levaria junto 591 eventos e 7 das 17 mudanças de preço já registradas --
+    41% de todo o sinal analítico do projeto. A poda nunca tinha disparado
+    (corte de 180 dias, projeto com 17), então o estrago era latente.
 
-    Só remove o que está INATIVO há mais de DIAS_PARA_PODA -- imóvel ativo,
-    suspeito ou recém-desaparecido fica. E preserva a linha em `imovel` se ela
-    ainda tiver outro anúncio vivo: apagar o anúncio não pode apagar o imóvel.
+    A regra agora separa as duas naturezas do dado:
+
+    - APRESENTAÇÃO (fotos, descrição): serve ao card que está na tela. Anúncio
+      fora do ar não tem card, e as URLs de foto dos portais expiram de
+      qualquer jeito. É o que ocupa espaço: 291 KB de fotos e 113 KB de
+      descrição, sendo 148 KB em anúncios que já saíram do ar.
+    - HISTÓRICO (preço, área, quartos, bairro, datas, eventos): é o produto
+      analítico. Não se apaga, nem depois de anos -- uma linha sem fotos nem
+      descrição custa ~200 bytes, e é dela que sai qualquer análise de
+      valorização por bairro.
+
+    Se o anúncio reaparecer, a próxima rodada repõe fotos e descrição: o
+    UPSERT usa COALESCE(excluded.fotos, imoveis.fotos), então valor novo
+    sempre vence o nulo.
     """
-    limite = (date.today() - timedelta(days=DIAS_PARA_PODA)).isoformat()
     conn = conectar()
     cur = conn.cursor()
 
-    alvos = [r[0] for r in cur.execute(
-        """SELECT url FROM imoveis
-           WHERE status = ? AND COALESCE(ultima_confirmacao, ultimo_visto) < ?""",
-        (INATIVO, limite),
-    )]
+    cur.execute(
+        """UPDATE imoveis SET fotos = NULL, descricao = NULL
+           WHERE status = ? AND (fotos IS NOT NULL OR descricao IS NOT NULL)""",
+        (INATIVO,),
+    )
+    limpos = cur.rowcount
 
-    if alvos:
-        marcadores = ",".join("?" * len(alvos))
-        cur.execute(f"DELETE FROM evento WHERE url IN ({marcadores})", alvos)
-        cur.execute(f"DELETE FROM imovel_anuncio WHERE url IN ({marcadores})", alvos)
-        cur.execute(f"DELETE FROM imoveis WHERE url IN ({marcadores})", alvos)
-        # imóvel que ficou sem nenhum anúncio some também
-        cur.execute(
-            "DELETE FROM imovel WHERE id NOT IN "
-            "(SELECT DISTINCT imovel_id FROM imoveis WHERE imovel_id IS NOT NULL)"
-        )
+    # `imovel` e `imovel_anuncio` são reconstruídos a cada rodada por
+    # consolidar_imoveis, então não acumulam -- não há o que podar aqui.
     conn.commit()
 
     tamanho_antes = os.path.getsize(config.ARQUIVO_DB)
@@ -675,14 +676,15 @@ def manutencao(vacuum: bool = False) -> dict:
     tamanho_depois = os.path.getsize(config.ARQUIVO_DB)
 
     r = {
-        "podados": len(alvos),
+        "limpos": limpos,
         "kb_antes": tamanho_antes // 1024,
         "kb_depois": tamanho_depois // 1024,
     }
-    if alvos or vacuum:
+    if limpos or vacuum:
         log.info(
-            f"Manutenção: {r['podados']} anúncio(s) inativo(s) removido(s), "
-            f"banco {r['kb_antes']} KB -> {r['kb_depois']} KB"
+            f"Manutenção: apresentação limpa em {limpos} anúncio(s) fora do ar "
+            f"(histórico preservado), banco {r['kb_antes']} KB -> "
+            f"{r['kb_depois']} KB"
         )
     return r
 

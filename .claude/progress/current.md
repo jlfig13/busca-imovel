@@ -15,6 +15,40 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**05/09 (4):** manutenção do banco — e um defeito latente achado no caminho.
+
+Eu tinha proposto podar mais cedo (de 180 para 30-45 dias). **Era errado, e a
+objeção do usuário estava certa:** a poda existente apagava `evento` junto com
+o anúncio. Medido no banco real, disparar hoje levaria **591 eventos e 7 das
+17 mudanças de preço — 41% de todo o sinal analítico**. Nunca tinha disparado
+porque o corte era 180 dias e o projeto tem 17 de vida. Cortar para 30 teria
+destruído isso na rodada seguinte.
+
+A regra agora separa as duas naturezas do dado:
+
+- **Apresentação** (fotos, descrição): serve ao card na tela. Anúncio fora do
+  ar não tem card, e as URLs de foto dos portais expiram sozinhas. É onde está
+  o peso — 291 KB de fotos e 113 KB de descrição.
+- **Histórico** (preço, área, quartos, bairro, datas, eventos): é o produto
+  analítico. Não se apaga. Linha sem fotos nem descrição custa ~200 bytes.
+
+Medido sobre o banco de produção: **2.108 KB → 1.872 KB**, com 1.257 eventos,
+17 mudanças de preço e 915 linhas intactas. Reaparecendo o anúncio, a rodada
+seguinte repõe fotos e descrição (o UPSERT usa COALESCE).
+
+**Correção de um número que eu dei errado:** falei em ~300 MB/mês de
+crescimento. Medido, o `.git` tem 5,3 MB após 55 commits de dados — ~96 KB por
+commit, porque o git faz delta entre versões do SQLite. A projeção real com
+12 rodadas/dia fica na casa de 30 a 75 MB/mês. Continua sendo um problema em
+alguns meses, mas 4x menor do que eu disse.
+
+**Sobre Parquet (proposto pelo usuário):** é o destino certo, mas não agora. O
+que faz o repositório crescer não é o formato, é reescrever um binário de 2 MB
+doze vezes por dia. A solução de verdade é histórico em arquivo append-only
+por dia — aí o git guarda só o dado novo. Isso só se paga quando o `.db`
+deixar de ser versionado a cada rodada, e aí ele precisa ser reconstruído do
+histórico no início da rodada. Fica anotado no BACKLOG com gatilho medido.
+
 **05/09 (3):** filtros livres com preferência salva no navegador — fase 1 de
 dois pedidos (a página de KPIs fica para a fase 2).
 
