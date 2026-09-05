@@ -54,8 +54,27 @@ Junto, quatro pedidos:
   veem o Referer de outra origem e negam. Agora vai `<meta name="referrer"
   content="no-referrer">` e `referrerpolicy="no-referrer"` na tag.
 
-**Pendente de verificação em produção:** paginação (etapa 2), OLX Olinda e as
-fotos. Nada disso é testável aqui -- este ambiente não alcança olx.com.br,
+**Verificado na rodada #53:**
+
+- **Paginação da OLX: resolvida.** A reserva `?o=` levou de 1 para 5 páginas:
+  47 → **235 anúncios**, 4 → **35 dentro do filtro**. No total, 73 → 131
+  anúncios e 41 → **73 imóveis**; no recorte de bairros, 12 → **19**.
+- **OLX Olinda: revertida no mesmo dia.** A cidade no caminho da URL é
+  ignorada pela busca -- a entrada "de Olinda" devolveu Recife 15, Jaboatão 8,
+  Paulista 5, Olinda 3, Ipojuca 2, Igarassu 1, Camaragibe 1, e os MESMOS 235
+  anúncios da entrada de Recife. Como `imoveis` é chaveada por URL, a segunda
+  fonte só sobrescrevia a coluna `site` e fazia a primeira aparecer com zero.
+  O comentário no config já avisava que a busca cobre a região metropolitana
+  inteira; eu não dei o peso devido. Olinda já vinha pela entrada existente --
+  o que faltava era paginação. A lição ficou escrita no `config.py`, no lugar
+  onde a próxima pessoa vai procurar.
+- **Zap e Viva Real: ainda na p1.** O fallback de clique existia e não
+  disparou, porque reusava `_proxima_pagina`, que prefere âncora -- e a
+  âncora é justamente a que não funciona. Agora há `_proxima_pagina_botao`,
+  que ignora âncoras, mais rolagem até o controle e log de por que falhou.
+  Pendente de nova validação.
+
+**Pendente de verificação em produção:** paginação do Grupo ZAP e as fotos. Nada disso é testável aqui -- este ambiente não alcança olx.com.br,
 zapimoveis.com.br nem os CDNs de imagem. A validação é a rodada do Actions.
 
 **22/08:** persistência da triagem. Relato: "marco favorito ou descarto e na
@@ -243,7 +262,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 199 testes, ~4s.
+- 201 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

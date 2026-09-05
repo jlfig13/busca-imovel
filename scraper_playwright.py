@@ -379,8 +379,21 @@ def _proxima_pagina(page_obj, url_atual: str):
         if href and href != url_atual:
             return ("ir", href, sel)
 
-    # SPA que pagina sem trocar de URL só oferece o botão. Clicar é o único
-    # caminho -- e é também o mais fiel ao que um leitor faria.
+    botao = _proxima_pagina_botao(page_obj)
+    if botao:
+        return botao
+    return None
+
+
+def _proxima_pagina_botao(page_obj):
+    """Só o CONTROLE clicável, ignorando âncoras.
+
+    O fallback de "a lista não trocou" precisa disto: ele roda justamente
+    quando a âncora existe e não funciona, então reusar _proxima_pagina
+    devolveria a mesma âncora inútil e o clique nunca aconteceria -- foi o que
+    a rodada #53 mostrou, com Zap e Viva Real parando na p1 apesar do
+    fallback existir.
+    """
     for sel in _SELETORES_PROXIMA_BOTAO:
         try:
             el = page_obj.query_selector(sel)
@@ -509,17 +522,23 @@ def scrape(site: dict) -> list[dict]:
                 # navegação direta não funciona -- é o caminho que o leitor
                 # usa, e o único que dispara o roteador do próprio site.
                 if pagina > 1 and not _esperar_lista_trocar(page, seletor_href, anterior):
-                    botao = _proxima_pagina(page, page.url)
-                    if botao and botao[0] == "clicar":
-                        log.info(
-                            f"[{site['nome']}] p{pagina}: navegação não trocou "
-                            f"a lista; tentando o clique em {botao[1]}"
-                        )
+                    botao = _proxima_pagina_botao(page)
+                    log.info(
+                        f"[{site['nome']}] p{pagina}: a navegação não trocou a "
+                        f"lista; botão de próxima: {botao[1] if botao else 'nenhum'}"
+                    )
+                    if botao:
                         try:
+                            # o controle costuma ficar no rodapé da lista
+                            page.eval_on_selector(
+                                botao[1], "e => e.scrollIntoView({block:'center'})")
                             page.click(botao[1], timeout=10000)
                             _esperar_lista_trocar(page, seletor_href, anterior)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log.warning(
+                                f"[{site['nome']}] p{pagina}: clique falhou: "
+                                f"{str(e)[:100]}"
+                            )
 
                 # Espera de acomodação. O seletor acima só garante que o
                 # PRIMEIRO link existe -- preço, área e endereço chegam

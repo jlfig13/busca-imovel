@@ -564,33 +564,19 @@ SITES = [
             "(nível de 103 chars), enquanto o bairro só aparece no pai "
             "(SECTION de 185 chars) -- daí todo anúncio vir sem bairro."
         ),
+        # NÃO adicione uma segunda entrada OLX para Olinda: tentado em
+        # 05/09/2026 e revertido no mesmo dia. A cidade no caminho da URL
+        # (.../recife-e-regiao/olinda) é ignorada pela busca -- as duas
+        # entradas trouxeram os MESMOS 235 anúncios, e a segunda só
+        # sobrescreveu a coluna `site`, fazendo a primeira aparecer com zero.
+        # A rodada de validação devolveu, pela entrada "de Olinda": Recife 15,
+        # Jaboatão 8, Paulista 5, Olinda 3, Ipojuca 2, Igarassu 1,
+        # Camaragibe 1. Olinda já vem por aqui; o que faltava era paginação.
+        #
         # metropolitana inteira (Recife/Olinda/Jaboatão/...), então
         # scraper_playwright._parse_card detecta a cidade por item a
         # partir do padrão "Cidade, Bairro" do próprio card. Isso aqui só
         # vale como fallback pros poucos casos em que não detecta.
-    },
-    {
-        # Olinda estava descoberta na OLX. A busca de Recife é do MUNICÍPIO
-        # (.../recife-e-regiao/recife): anúncio de Casa Caiada ou Bairro Novo
-        # só aparecia quando vazava da região, e sumia quando não vazava --
-        # foi o caso do "aluguel-apt-casa-caiada", visto uma vez em 03/08 e
-        # nunca mais. Mesma estrutura da entrada de Recife, com a cidade
-        # trocada no path; "cidade" faz o filtro de Olinda valer (3+ quartos,
-        # 70m²+). Mesma faixa de preço via placeholder, para não fixar valor
-        # que já mora em FILTROS.
-        "nome": "OLX Imóveis Olinda",
-        "tipo": "playwright",
-        "url_listagem": (
-            "https://www.olx.com.br/imoveis/aluguel/apartamentos/estado-pe/"
-            "recife-e-regiao/olinda?ps={preco_min}&pe={preco_max}"
-        ),
-        "base_url": "https://pe.olx.com.br",
-        "seletor_href": "/grande-recife/imoveis/",
-        "wait_until": "load",
-        "max_paginas": 5,
-        "cidade": "Olinda",
-        "espera_ms": 4000,
-        "param_pagina": "o",
     },
     {
         "nome": "Imovelweb",

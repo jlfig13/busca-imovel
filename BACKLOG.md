@@ -16,6 +16,11 @@
   e a lista repete -- SPA, o parâmetro só vale no cliente. Agora espera o
   primeiro href TROCAR e, se não trocar, clica no controle. Para o OLX, que
   não publica link legível, ficou `param_pagina: "o"` como reserva.
+  *Resultado medido na #53:* OLX de 47 para **235 anúncios** (5 páginas), e de
+  4 para **35** dentro do filtro. No total: 73 → 131 anúncios, 41 → 73
+  imóveis, 12 → 19 no recorte. Zap e Viva Real seguiram na p1 -- o fallback de
+  clique não disparava porque reusava a busca que prefere âncora, e a âncora é
+  a que não funciona; corrigido com um localizador só de botão.
   *Descartado:* tabela de parâmetro por portal como solução principal.
   Parâmetro de paginação é detalhe de implementação alheia -- vira dívida na
   primeira mudança de qualquer um dos três.
@@ -25,8 +30,17 @@
   não olhar", aplicada dentro da fonte -- e foi esse aviso que apontou a
   etapa 2 acima.
 
-- [x] **OLX Olinda.** A busca de Recife é do município; Olinda só aparecia
-  quando vazava da região.
+- [~] **OLX Olinda: adicionada e revertida no mesmo dia.** A hipótese era que
+  a busca de Recife fosse do município. É falso: a cidade no caminho da URL é
+  ignorada, e a entrada "de Olinda" devolveu os MESMOS 235 anúncios, com
+  Recife 15, Jaboatão 8, Paulista 5, Olinda 3, Ipojuca 2. Pior que inútil:
+  `imoveis` é chaveada por URL, então a segunda fonte só sobrescrevia a coluna
+  `site` e zerava a atribuição da primeira, além de dobrar a carga num site
+  que já devolve 403 nas páginas de detalhe. O comentário no config já dizia
+  que a busca cobre a região metropolitana; a lição agora está escrita como
+  aviso explícito ("NÃO adicione uma segunda entrada OLX"), no lugar onde a
+  próxima pessoa vai procurar. O que faltava para Olinda era paginação, e era
+  o mesmo defeito de sempre.
 
 - [x] **Cadência de 2 em 2 horas.** *A vigiar:* 12 commits/dia de um banco
   binário. Se o repositório crescer demais, o próximo passo é parar de

@@ -98,3 +98,26 @@ def test_erro_no_seletor_nao_derruba_a_busca():
             raise RuntimeError("contexto destruído")
 
     assert sp._proxima_pagina(Explosiva(), "https://x.com/busca") is None
+
+
+def test_localizador_de_botao_ignora_ancora():
+    """O fallback roda justamente quando a âncora existe e não funciona.
+
+    Reusar _proxima_pagina ali devolveria a mesma âncora inútil e o clique
+    nunca aconteceria -- foi o que a rodada #53 mostrou, com Zap e Viva Real
+    parando na p1 apesar do fallback existir.
+    """
+    pg = _Pagina(
+        links={'a[rel="next"]': "https://x.com/p2"},
+        botoes={'button[aria-label*="óxima" i]': _Botao()},
+    )
+    # a busca normal prefere a âncora...
+    assert sp._proxima_pagina(pg, pg.url)[0] == "ir"
+    # ...e a busca de botão a ignora
+    assert sp._proxima_pagina_botao(pg) == (
+        "clicar", 'button[aria-label*="óxima" i]', 'button[aria-label*="óxima" i]')
+
+
+def test_localizador_de_botao_sem_botao():
+    pg = _Pagina(links={'a[rel="next"]': "https://x.com/p2"})
+    assert sp._proxima_pagina_botao(pg) is None
