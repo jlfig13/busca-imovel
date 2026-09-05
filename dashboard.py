@@ -9,7 +9,7 @@ O sistema visual está em design.py, com o racional de cada decisão.
 """
 import html
 import json
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import afinidade
 import config
@@ -253,6 +253,13 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     json_semente = json.dumps(_ler_triagem(), ensure_ascii=False)
     ic = design.ICONES
     hoje = date.today().strftime("%d/%m/%Y")
+    # Hora da rodada em BRT. O runner do Actions roda em UTC e o dashboard é
+    # lido no Recife: carimbar UTC faria a rodada das 08:13 aparecer como
+    # 11:13. Offset fixo porque o Brasil não tem horário de verão desde 2019
+    # -- e zoneinfo exigiria tzdata no runner, dependência nova para resolver
+    # um fuso que não muda.
+    agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+    atualizado_em = agora_brt.strftime("%d/%m às %H:%M")
     perfis = " · ".join(
         f"{c} {p['quartos_min']}+ qtos, {p['area_min']}m²+"
         for c, p in config.FILTROS_POR_CIDADE.items()
@@ -288,6 +295,11 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0D1114" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<!-- As fotos vêm do CDN de cada portal. Servidas de jlfig13.github.io, o
+     navegador manda o Referer e boa parte dos CDNs recusa hotlink de outra
+     origem -- o card caía no marcador cinza mesmo com a URL correta no
+     banco. Sem Referer a imagem é servida como acesso direto. -->
+<meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" media="all"
@@ -302,7 +314,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     <div class="marca">
       <span class="marca-glifo">{ic['marca']}</span>
       <span>Monitor de Apartamentos</span>
-      <span class="marca-sub">{hoje}</span>
+      <span class="marca-sub">{atualizado_em}</span>
     </div>
     <div class="topo-dir">
       <button class="btn-obs" id="btn-obs" type="button" aria-expanded="false"
@@ -439,7 +451,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   </section>
 
   <footer class="rodape">
-    Rodada de {hoje} · {len(dados)} imóveis exibidos
+    Atualizado em {atualizado_em} (BRT) · {len(dados)} imóveis exibidos
   </footer>
 </div>
 
@@ -892,6 +904,7 @@ function capa(d){{
   const vazio = `<div class="foto-vazia">${{IC.foto}}</div>`;
   const img = fotos.length
     ? `<img src="${{esc(fotos[0])}}" alt="" loading="lazy" decoding="async"
+         referrerpolicy="no-referrer"
          onerror="this.closest('.foto').classList.add('sem-foto')">`
     : '';
   const nav = fotos.length > 1

@@ -391,6 +391,45 @@ def _proxima_pagina(page_obj, url_atual: str):
     return None
 
 
+def _primeiro_href(page_obj, seletor_href: str) -> str | None:
+    """Href do primeiro anúncio da página. Serve de impressão digital."""
+    try:
+        return page_obj.eval_on_selector(
+            f'a[href*="{seletor_href}"]', "e => e.href")
+    except Exception:
+        return None
+
+
+def _esperar_lista_trocar(page_obj, seletor_href: str, anterior: str | None,
+                          timeout_ms: int = 12000) -> bool:
+    """True quando o primeiro anúncio deixou de ser o da página anterior.
+
+    Zap e Viva Real são SPA: o link de "próxima página" existe e aponta para
+    `?pagina=2`, mas navegar até lá devolve o HTML da PRIMEIRA página, e a
+    troca só acontece depois que o cliente busca e re-renderiza. Sem esperar
+    por isso, a leitura pega a página velha e o scraper conclui que acabou --
+    foi o que a rodada #52 registrou: "p2 via ir" seguido de "p2 repetiu a
+    página anterior".
+
+    Comparar o primeiro href é mais barato e mais confiável que contar cards:
+    a lista muda de tamanho por lazy-load sem trocar de página.
+    """
+    if not anterior:
+        return True
+    try:
+        page_obj.wait_for_function(
+            """([sel, ant]) => {
+                 const a = document.querySelector(`a[href*="${sel}"]`);
+                 return !!a && a.href !== ant;
+               }""",
+            arg=[seletor_href, anterior],
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def scrape(site: dict) -> list[dict]:
     try:
         from playwright.sync_api import sync_playwright
@@ -441,6 +480,7 @@ def scrape(site: dict) -> list[dict]:
                 acao, alvo, via = proximo
                 if pagina > 1:
                     log.info(f"[{site['nome']}] p{pagina} via {acao}: {via}")
+                anterior = _primeiro_href(page, seletor_href) if pagina > 1 else None
                 # O Playwright não passa por utils.get_html, então o
                 # Crawl-delay precisa ser respeitado aqui também -- senão a
                 # diretiva valeria só para as fontes de requests.
@@ -463,6 +503,23 @@ def scrape(site: dict) -> list[dict]:
                     )
                 except Exception:
                     pass  # se não aparecer, tentamos mesmo assim
+
+                # Numa SPA a URL troca antes do conteúdo. Se a lista não
+                # mudou, o clique no controle costuma funcionar onde a
+                # navegação direta não funciona -- é o caminho que o leitor
+                # usa, e o único que dispara o roteador do próprio site.
+                if pagina > 1 and not _esperar_lista_trocar(page, seletor_href, anterior):
+                    botao = _proxima_pagina(page, page.url)
+                    if botao and botao[0] == "clicar":
+                        log.info(
+                            f"[{site['nome']}] p{pagina}: navegação não trocou "
+                            f"a lista; tentando o clique em {botao[1]}"
+                        )
+                        try:
+                            page.click(botao[1], timeout=10000)
+                            _esperar_lista_trocar(page, seletor_href, anterior)
+                        except Exception:
+                            pass
 
                 # Espera de acomodação. O seletor acima só garante que o
                 # PRIMEIRO link existe -- preço, área e endereço chegam

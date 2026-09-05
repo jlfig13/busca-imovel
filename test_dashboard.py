@@ -185,3 +185,47 @@ def test_restaurar_backup_nao_apaga_o_que_ja_existe(ambiente):
     trecho = html[html.index("el('inp-restaurar')"):html.index("/* Liga (ou desliga)")]
     assert "unir(FAVORITOS, dados.favoritos" in trecho
     assert "unir(DESCARTADOS, dados.descartados" in trecho
+
+
+# ---------------------------------------------------------------------------
+# Hora da rodada e carregamento das fotos
+# ---------------------------------------------------------------------------
+
+def test_carimbo_traz_hora_e_nao_so_a_data(ambiente):
+    """Com 12 rodadas/dia, "05/09" não diz se o dado é de agora ou de 10h."""
+    html = _html(ambiente, [_imovel()])
+    assert "Atualizado em" in html
+    assert "(BRT)" in html
+    # duas vezes basta: sob o título (sempre visível) e no rodapé. O pulso
+    # é para métrica, e "atualizado" viraria um número grande que não é número.
+    assert html.count("05/") >= 1 or "às" in html
+
+
+def test_carimbo_esta_em_brt_nao_em_utc(ambiente, monkeypatch):
+    """O runner roda em UTC e o dashboard é lido no Recife: sem o ajuste, a
+    rodada das 08:13 apareceria como 11:13."""
+    import dashboard as d
+    from datetime import datetime, timezone
+
+    class _Fixo(d.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 5, 11, 13, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(d, "datetime", _Fixo)
+    html = _html(ambiente, [_imovel()])
+    assert "05/09 às 08:13" in html, "deveria descontar as 3 horas de BRT"
+
+
+def test_foto_pede_para_nao_mandar_referer(ambiente):
+    """Os CDNs dos portais recusam hotlink de outra origem: servido do
+    github.io, o card caía no marcador cinza com a URL correta no banco."""
+    html = _html(ambiente, [_imovel()])
+    assert '<meta name="referrer" content="no-referrer">' in html
+    assert 'referrerpolicy="no-referrer"' in html
+
+
+def test_erro_de_foto_ainda_cai_no_marcador(ambiente):
+    """A degradação continua: sem rede, o card tem de seguir legível."""
+    html = _html(ambiente, [_imovel()])
+    assert "onerror=\"this.closest('.foto').classList.add('sem-foto')\"" in html

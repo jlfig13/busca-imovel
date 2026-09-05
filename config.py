@@ -548,6 +548,11 @@ SITES = [
         # o OLX renderiza preço/área num segundo passe; com menos de 4 s a
         # maioria dos cards sai sem preço e vira indeterminado
         "espera_ms": 4000,
+        # O OLX não publica link de "próxima página" que o scraper consiga
+        # ler -- verificado na rodada #52, que registrou "o site não publica
+        # próxima página" e parou na p1 com 47 anúncios. Aqui a reserva por
+        # parâmetro é o caminho, e o parâmetro dele é `o`, não `pagina`.
+        "param_pagina": "o",
         "obs": (
             "REATIVADO em 18/08/2026. O diagnóstico anterior apontava para o "
             "payload RSC (window.__next_f), mas ele vem vazio no momento da "
@@ -563,6 +568,29 @@ SITES = [
         # scraper_playwright._parse_card detecta a cidade por item a
         # partir do padrão "Cidade, Bairro" do próprio card. Isso aqui só
         # vale como fallback pros poucos casos em que não detecta.
+    },
+    {
+        # Olinda estava descoberta na OLX. A busca de Recife é do MUNICÍPIO
+        # (.../recife-e-regiao/recife): anúncio de Casa Caiada ou Bairro Novo
+        # só aparecia quando vazava da região, e sumia quando não vazava --
+        # foi o caso do "aluguel-apt-casa-caiada", visto uma vez em 03/08 e
+        # nunca mais. Mesma estrutura da entrada de Recife, com a cidade
+        # trocada no path; "cidade" faz o filtro de Olinda valer (3+ quartos,
+        # 70m²+). Mesma faixa de preço via placeholder, para não fixar valor
+        # que já mora em FILTROS.
+        "nome": "OLX Imóveis Olinda",
+        "tipo": "playwright",
+        "url_listagem": (
+            "https://www.olx.com.br/imoveis/aluguel/apartamentos/estado-pe/"
+            "recife-e-regiao/olinda?ps={preco_min}&pe={preco_max}"
+        ),
+        "base_url": "https://pe.olx.com.br",
+        "seletor_href": "/grande-recife/imoveis/",
+        "wait_until": "load",
+        "max_paginas": 5,
+        "cidade": "Olinda",
+        "espera_ms": 4000,
+        "param_pagina": "o",
     },
     {
         "nome": "Imovelweb",

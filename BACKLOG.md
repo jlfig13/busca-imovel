@@ -2,6 +2,48 @@
 
 ---
 
+## Fase 8 — Cobertura: paginação, OLX Olinda, cadência (05/09/2026)
+
+- [x] **Todas as fontes de Playwright traziam só a primeira página.** O laço
+  montava a seguinte como `{base}&pagina={n}`; o OLX pagina por `?o=` e os
+  portais do Grupo ZAP ignoram `pagina` nessa posição. Os três devolviam a
+  mesma p1, o scraper lia "0 links novos" e concluía "acabaram os imóveis" --
+  semanas de catálogo truncado sem nenhum sinal. Medido na #51: Viva Real
+  30/0, Zap 30/0, Zap Olinda 13/0, Viva Real Olinda 13/0, OLX 49/0.
+  *Correção em duas etapas, e a segunda só existiu porque a primeira foi
+  instrumentada:* (1) seguir o link que o site publica, com log de por onde
+  avançou; (2) a rodada #52 revelou que Zap e Viva Real ACHAM o link, navegam
+  e a lista repete -- SPA, o parâmetro só vale no cliente. Agora espera o
+  primeiro href TROCAR e, se não trocar, clica no controle. Para o OLX, que
+  não publica link legível, ficou `param_pagina: "o"` como reserva.
+  *Descartado:* tabela de parâmetro por portal como solução principal.
+  Parâmetro de paginação é detalhe de implementação alheia -- vira dívida na
+  primeira mudança de qualquer um dos três.
+
+- [x] **Zero links novos depois de uma página cheia virou WARNING.** Zero na
+  p1 é fonte vazia; zero na p3 é truncamento. Mesma regra de "não achar não é
+  não olhar", aplicada dentro da fonte -- e foi esse aviso que apontou a
+  etapa 2 acima.
+
+- [x] **OLX Olinda.** A busca de Recife é do município; Olinda só aparecia
+  quando vazava da região.
+
+- [x] **Cadência de 2 em 2 horas.** *A vigiar:* 12 commits/dia de um banco
+  binário. Se o repositório crescer demais, o próximo passo é parar de
+  versionar o `.db` a cada rodada e guardar só o histórico de eventos.
+
+- [x] **Hora da rodada no dashboard**, em BRT. Com 12 rodadas/dia, "05/09"
+  não diz se o dado é de agora ou de dez horas atrás.
+
+- [x] **Fotos não carregavam, e não era coleta.** 54 de 62 anúncios têm URL
+  de foto no banco. É hotlink recusado: servidas de jlfig13.github.io, os
+  CDNs dos portais recebem Referer de outra origem e negam. `<meta
+  name="referrer" content="no-referrer">` mais `referrerpolicy` na tag. O
+  `onerror` que cai no marcador cinza continua -- a degradação offline é
+  premissa do projeto.
+
+---
+
 ## Fase 7 — Persistência da triagem (22/08/2026)
 
 Relato de uso: favorito e descarte sumiam "na próxima atualização".

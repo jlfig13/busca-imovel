@@ -1,6 +1,6 @@
 # Estado Atual
 
-**Atualizado em:** 2026-08-21
+**Atualizado em:** 2026-09-05
 **Branch:** `claude/remote-control-hgauah`
 **No ar:** https://jlfig13.github.io/busca-imovel/
 
@@ -14,6 +14,49 @@
 | [#4](https://github.com/jlfig13/busca-imovel/pull/4) | Cron 07:00 → 07:13 BRT, fora da hora cheia |
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
+
+**05/09:** relato de imóveis faltando (8 URLs, 7 delas nunca vistas). A causa
+era grande e estava calada.
+
+**Paginação: todas as fontes de Playwright traziam só a p1.** O laço montava
+a página seguinte como `{base}&pagina={n}`. O OLX pagina por `?o=`, e os
+portais do Grupo ZAP também ignoram `pagina` nessa posição -- os três
+devolviam a MESMA primeira página, o scraper via "0 links novos" e concluía
+"acabaram os imóveis". Medido na rodada #51: Viva Real 30/0, Zap 30/0, OLX
+49/0.
+
+A correção foi em duas etapas, e a segunda só apareceu porque a primeira foi
+instrumentada:
+
+1. Seguir o link de "próxima página" que o site publica (`rel="next"` ou o
+   botão), em vez de adivinhar parâmetro. Cada avanço registra por onde foi.
+2. A rodada #52 mostrou que **não bastava**: Zap e Viva Real ACHARAM o link e
+   navegaram (`p2 via ir`), e a lista repetiu -- são SPA, o `?pagina=2` só
+   vale no cliente e nós líamos o HTML da p1. Agora o scraper espera o
+   primeiro href da lista TROCAR; se não trocar, tenta o clique no controle,
+   que é o que dispara o roteador do site. O OLX não publica link legível
+   nenhum: para ele ficou a reserva por parâmetro (`param_pagina: "o"`).
+
+Junto, quatro pedidos:
+
+- **OLX Olinda** como fonte nova. A busca de Recife é do MUNICÍPIO, não da
+  região: anúncio de Casa Caiada só entrava quando vazava, e sumia quando
+  não -- o caso do "aluguel-apt-casa-caiada", visto uma vez em 03/08.
+- **Cadência de 2 em 2 horas** (12x/dia). Consequência a vigiar: 12 commits
+  diários do banco binário. A poda diária e o VACUUM de domingo passam a ser
+  o que segura o tamanho do repositório.
+- **Hora da última rodada** no cabeçalho e no rodapé, em BRT (o runner é UTC;
+  sem o desconto, a rodada das 08:13 apareceria como 11:13). Fora do pulso de
+  propósito: "atualizado" não é métrica para virar número grande, e três
+  lugares com a mesma informação é redundância.
+- **Fotos.** Não era coleta: 54 dos 62 anúncios TÊM url de foto no banco. É
+  hotlink recusado -- servidas de jlfig13.github.io, os CDNs dos portais
+  veem o Referer de outra origem e negam. Agora vai `<meta name="referrer"
+  content="no-referrer">` e `referrerpolicy="no-referrer"` na tag.
+
+**Pendente de verificação em produção:** paginação (etapa 2), OLX Olinda e as
+fotos. Nada disso é testável aqui -- este ambiente não alcança olx.com.br,
+zapimoveis.com.br nem os CDNs de imagem. A validação é a rodada do Actions.
 
 **22/08:** persistência da triagem. Relato: "marco favorito ou descarto e na
 próxima atualização tudo é desfeito".
@@ -199,8 +242,8 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 
 ## Estado da operação
 
-- Cron 2x/dia: 11:13 e 21:13 UTC (08:13 e 18:13 BRT) + disparo manual.
-- 185 testes, ~3s.
+- Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
+- 199 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada
