@@ -185,3 +185,96 @@ def test_restaurar_backup_nao_apaga_o_que_ja_existe(ambiente):
     trecho = html[html.index("el('inp-restaurar')"):html.index("/* Liga (ou desliga)")]
     assert "unir(FAVORITOS, dados.favoritos" in trecho
     assert "unir(DESCARTADOS, dados.descartados" in trecho
+
+
+# ---------------------------------------------------------------------------
+# Hora da rodada e carregamento das fotos
+# ---------------------------------------------------------------------------
+
+def test_carimbo_traz_hora_e_nao_so_a_data(ambiente):
+    """Com 12 rodadas/dia, "05/09" não diz se o dado é de agora ou de 10h."""
+    html = _html(ambiente, [_imovel()])
+    assert "Atualizado em" in html
+    assert "(BRT)" in html
+    # duas vezes basta: sob o título (sempre visível) e no rodapé. O pulso
+    # é para métrica, e "atualizado" viraria um número grande que não é número.
+    assert html.count("05/") >= 1 or "às" in html
+
+
+def test_carimbo_esta_em_brt_nao_em_utc(ambiente, monkeypatch):
+    """O runner roda em UTC e o dashboard é lido no Recife: sem o ajuste, a
+    rodada das 08:13 apareceria como 11:13."""
+    import dashboard as d
+    from datetime import datetime, timezone
+
+    class _Fixo(d.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 5, 11, 13, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(d, "datetime", _Fixo)
+    html = _html(ambiente, [_imovel()])
+    assert "05/09 às 08:13" in html, "deveria descontar as 3 horas de BRT"
+
+
+def test_foto_pede_para_nao_mandar_referer(ambiente):
+    """Os CDNs dos portais recusam hotlink de outra origem: servido do
+    github.io, o card caía no marcador cinza com a URL correta no banco."""
+    html = _html(ambiente, [_imovel()])
+    assert '<meta name="referrer" content="no-referrer">' in html
+    assert 'referrerpolicy="no-referrer"' in html
+
+
+def test_erro_de_foto_ainda_cai_no_marcador(ambiente):
+    """A degradação continua: sem rede, o card tem de seguir legível."""
+    html = _html(ambiente, [_imovel()])
+    assert "onerror=\"this.closest('.foto').classList.add('sem-foto')\"" in html
+
+
+# ---------------------------------------------------------------------------
+# Preferências no navegador
+# ---------------------------------------------------------------------------
+# Até 05/09/2026 o recorte era decidido no Python (config.BAIRROS_EXIBIDOS) e
+# chegava pronto em cada item como `noRecorte`. Mudar de ideia exigia editar o
+# config e esperar a próxima rodada -- e faixa de preço/quartos nem isso
+# resolvia, porque estavam cravadas na URL de busca das fontes.
+
+def test_preferencia_padrao_vai_para_o_html(ambiente):
+    html = _html(ambiente, [_imovel()])
+    assert "const PREFS_PADRAO" in html
+    assert '"quartos_min": 2' in html
+    assert '"preco_max": 2500' in html
+
+
+def test_universo_de_bairros_vem_dos_dados_nao_do_config(ambiente):
+    """Se viesse do config, ninguém conseguiria escolher um bairro que não
+    fosse dos preferidos de quem montou o projeto."""
+    html = _html(ambiente, [
+        _imovel(cidade="Recife", bairro="Pina"),
+        _imovel(cidade="Olinda", bairro="Bairro Novo"),
+    ])
+    assert "const BAIRROS_POR_CIDADE" in html
+    assert '"Pina"' in html
+    assert '"Bairro Novo"' in html
+
+
+def test_recorte_nao_vem_mais_pronto_do_python(ambiente):
+    """Duas fontes de verdade para a mesma pergunta é o defeito a evitar."""
+    html = _html(ambiente, [_imovel()])
+    assert '"noRecorte"' not in html
+    assert "function atendePrefs" in html
+
+
+def test_preferencia_e_salva_no_navegador(ambiente):
+    html = _html(ambiente, [_imovel()])
+    assert "lerLista('preferencias')" in html
+    assert "gravarLista('preferencias', PREFS)" in html
+
+
+def test_campo_ausente_no_imovel_nao_exclui_da_preferencia(ambiente):
+    """"Não sei a área" não é "área errada" -- mesma regra de três estados do
+    filtro de coleta."""
+    html = _html(ambiente, [_imovel()])
+    trecho = html[html.index("function atendePrefs"):html.index("/* Descartado sai")]
+    for campo in ("d.preco != null", "d.quartos != null", "d.area != null"):
+        assert campo in trecho, f"{campo} precisa ser checado antes de excluir"

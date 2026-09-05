@@ -1,6 +1,6 @@
 # Estado Atual
 
-**Atualizado em:** 2026-08-21
+**Atualizado em:** 2026-09-05
 **Branch:** `claude/remote-control-hgauah`
 **No ar:** https://jlfig13.github.io/busca-imovel/
 
@@ -14,6 +14,135 @@
 | [#4](https://github.com/jlfig13/busca-imovel/pull/4) | Cron 07:00 → 07:13 BRT, fora da hora cheia |
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
+
+**05/09 (3):** filtros livres com preferência salva no navegador — fase 1 de
+dois pedidos (a página de KPIs fica para a fase 2).
+
+**O bloqueio não era de interface, era de coleta.** A faixa 1.500–2.500 e o
+mínimo de quartos estavam cravados na URL de busca de SEIS fontes
+(`?quartos=2&precoMinimo=1500&precoMaximo=2500`). Apartamento de R$ 1.200 ou
+de 1 quarto nunca entrava no banco — nenhum controle na tela faria aparecer o
+que não foi coletado.
+
+Separei as duas camadas que eram uma só:
+
+- **Envelope de coleta** (`config.FILTROS`): R$ 800–6.000, 1+ quarto, 30m²+.
+  Largo de propósito e mais caro de propósito — cada ponto de largura é
+  anúncio a mais por rodada, banco maior (commitado 12x/dia) e rodada mais
+  longa. É o preço de "escolha livre" ser verdade.
+- **Preferências** (`config.PREFERENCIAS_PADRAO` como semente, editáveis na
+  tela, salvas em `localStorage`): preço, quartos, área mín/máx, cidades e
+  bairros. `noRecorte` deixou de ir para o JSON — duas fontes de verdade para
+  a mesma pergunta era o defeito a evitar.
+
+Decisões de desenho que vale registrar:
+
+- **Bairros vêm dos DADOS, não do config.** Se viessem da minha lista,
+  ninguém conseguiria escolher um bairro que eu não tivesse escolhido antes.
+- **Lista de bairros vazia = "qualquer bairro serve"**, e não "todos os de
+  hoje". Bairro que aparecer amanhã entra sozinho.
+- **Campo ausente no imóvel não exclui.** "Não sei a área" não é "área
+  errada" — é a mesma regra de três estados do filtro de coleta.
+- **Simplificação assumida:** quartos e área viraram globais. Antes Olinda
+  exigia 3+/70 e Recife 2+/60; manter dois perfis pediria uma interface de
+  perfil por cidade para uma diferença que se resolve em dois toques.
+
+**Estreitamento conhecido:** a CTI tem `2-quartos` no CAMINHO da busca, não em
+query string. Trocar arrisca 404 e não foi verificado ao vivo, então aquela
+fonte segue coletando só 2+ quartos. Está anotado no config.
+
+Verificado em Chromium a 412px: painel abre, chips de cidade e bairro,
+preferência sobrevive à recarga, "restaurar padrão" volta ao config, sem
+rolagem horizontal. O ganho real de volume só aparece depois de uma rodada com
+o envelope novo.
+
+**05/09 (2):** relato "você tá colocando lugares como Recife e quando acesso é
+Garanhuns, Gravatá". Três causas, todas nossas:
+
+1. **`grande-recife` está em TODA URL do OLX** -- é o nome da região no
+   caminho. `cidade_do_slug` casava com "recife" e devolvia "Recife" para o
+   catálogo inteiro do portal, inclusive Caruaru. Era o mecanismo principal.
+2. **A cidade era inventada.** Sem detecção, `_parse_card` completava com
+   `cidade_padrao`. Agora só fontes de cidade única usam o padrão; o OLX é
+   `multi_cidade: True` e fica com cidade vazia, que o filtro trata como
+   INDETERMINADO.
+3. **O filtro não tinha recorte geográfico.** `avaliar_filtro` nunca olhava a
+   cidade: qualquer uma caía no `FILTRO_PADRAO` (que é o de Recife) e podia
+   ser APROVADA. Garanhuns passaria mesmo se fosse detectada certo.
+
+Junto, `utils.CIDADES_FORA_DA_REGIAO` reconhece 19 cidades do agreste/sertão/
+zona da mata. Elas não estão lá para serem monitoradas: estão para serem
+RECONHECIDAS, porque reconhecer é o que permite rejeitar com motivo
+("cidade fora do escopo: Garanhuns") em vez de rotular errado.
+
+**Recorte definido com o usuário:** Recife, Olinda e a Região Metropolitana
+(9 cidades a mais, com o perfil de Recife). Medido sobre a última rodada: sai
+1 anúncio de 105 -- a RMR fica preservada, e o que sai é do agreste, que antes
+entrava disfarçado de Recife. Ter perfil em `FILTROS_POR_CIDADE` é o que
+autoriza a cidade: os dois andam juntos porque avaliar sem perfil era o
+defeito.
+
+**05/09:** relato de imóveis faltando (8 URLs, 7 delas nunca vistas). A causa
+era grande e estava calada.
+
+**Paginação: todas as fontes de Playwright traziam só a p1.** O laço montava
+a página seguinte como `{base}&pagina={n}`. O OLX pagina por `?o=`, e os
+portais do Grupo ZAP também ignoram `pagina` nessa posição -- os três
+devolviam a MESMA primeira página, o scraper via "0 links novos" e concluía
+"acabaram os imóveis". Medido na rodada #51: Viva Real 30/0, Zap 30/0, OLX
+49/0.
+
+A correção foi em duas etapas, e a segunda só apareceu porque a primeira foi
+instrumentada:
+
+1. Seguir o link de "próxima página" que o site publica (`rel="next"` ou o
+   botão), em vez de adivinhar parâmetro. Cada avanço registra por onde foi.
+2. A rodada #52 mostrou que **não bastava**: Zap e Viva Real ACHARAM o link e
+   navegaram (`p2 via ir`), e a lista repetiu -- são SPA, o `?pagina=2` só
+   vale no cliente e nós líamos o HTML da p1. Agora o scraper espera o
+   primeiro href da lista TROCAR; se não trocar, tenta o clique no controle,
+   que é o que dispara o roteador do site. O OLX não publica link legível
+   nenhum: para ele ficou a reserva por parâmetro (`param_pagina: "o"`).
+
+Junto, quatro pedidos:
+
+- **OLX Olinda** como fonte nova. A busca de Recife é do MUNICÍPIO, não da
+  região: anúncio de Casa Caiada só entrava quando vazava, e sumia quando
+  não -- o caso do "aluguel-apt-casa-caiada", visto uma vez em 03/08.
+- **Cadência de 2 em 2 horas** (12x/dia). Consequência a vigiar: 12 commits
+  diários do banco binário. A poda diária e o VACUUM de domingo passam a ser
+  o que segura o tamanho do repositório.
+- **Hora da última rodada** no cabeçalho e no rodapé, em BRT (o runner é UTC;
+  sem o desconto, a rodada das 08:13 apareceria como 11:13). Fora do pulso de
+  propósito: "atualizado" não é métrica para virar número grande, e três
+  lugares com a mesma informação é redundância.
+- **Fotos.** Não era coleta: 54 dos 62 anúncios TÊM url de foto no banco. É
+  hotlink recusado -- servidas de jlfig13.github.io, os CDNs dos portais
+  veem o Referer de outra origem e negam. Agora vai `<meta name="referrer"
+  content="no-referrer">` e `referrerpolicy="no-referrer"` na tag.
+
+**Verificado na rodada #53:**
+
+- **Paginação da OLX: resolvida.** A reserva `?o=` levou de 1 para 5 páginas:
+  47 → **235 anúncios**, 4 → **35 dentro do filtro**. No total, 73 → 131
+  anúncios e 41 → **73 imóveis**; no recorte de bairros, 12 → **19**.
+- **OLX Olinda: revertida no mesmo dia.** A cidade no caminho da URL é
+  ignorada pela busca -- a entrada "de Olinda" devolveu Recife 15, Jaboatão 8,
+  Paulista 5, Olinda 3, Ipojuca 2, Igarassu 1, Camaragibe 1, e os MESMOS 235
+  anúncios da entrada de Recife. Como `imoveis` é chaveada por URL, a segunda
+  fonte só sobrescrevia a coluna `site` e fazia a primeira aparecer com zero.
+  O comentário no config já avisava que a busca cobre a região metropolitana
+  inteira; eu não dei o peso devido. Olinda já vinha pela entrada existente --
+  o que faltava era paginação. A lição ficou escrita no `config.py`, no lugar
+  onde a próxima pessoa vai procurar.
+- **Zap e Viva Real: ainda na p1.** O fallback de clique existia e não
+  disparou, porque reusava `_proxima_pagina`, que prefere âncora -- e a
+  âncora é justamente a que não funciona. Agora há `_proxima_pagina_botao`,
+  que ignora âncoras, mais rolagem até o controle e log de por que falhou.
+  Pendente de nova validação.
+
+**Pendente de verificação em produção:** paginação do Grupo ZAP e as fotos. Nada disso é testável aqui -- este ambiente não alcança olx.com.br,
+zapimoveis.com.br nem os CDNs de imagem. A validação é a rodada do Actions.
 
 **22/08:** persistência da triagem. Relato: "marco favorito ou descarto e na
 próxima atualização tudo é desfeito".
@@ -199,8 +328,8 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 
 ## Estado da operação
 
-- Cron 2x/dia: 11:13 e 21:13 UTC (08:13 e 18:13 BRT) + disparo manual.
-- 185 testes, ~3s.
+- Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
+- 214 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

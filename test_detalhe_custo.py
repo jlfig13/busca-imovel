@@ -38,7 +38,13 @@ def test_corrige_o_custo_que_o_card_escondia():
     assert i["custo_completo"] is True
     # e, com o custo real, o filtro passa a reprovar
     veredito, _ = utils.avaliar_filtro(i["preco"], i["quartos"], i["area_m2"], i["cidade"])
-    assert veredito == utils.REPROVADO
+    # Antes o teto de coleta era 2.500 e este imóvel era REPROVADO pelo custo
+    # corrigido. Com o envelope largo ele passa a ser coletado -- e o que o
+    # teste protege segue de pé: o veredito é calculado sobre 2.997 (custo
+    # real), não sobre os 1.850 da vitrine.
+    assert veredito == utils.APROVADO
+    fora, _ = utils.avaliar_filtro(9000, i["quartos"], i["area_m2"], i["cidade"])
+    assert fora == utils.REPROVADO, "o teto do envelope continua valendo"
 
 
 def test_nao_visita_quem_ja_tem_custo_completo():

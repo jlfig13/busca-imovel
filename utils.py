@@ -466,12 +466,58 @@ def bairro_do_slug(url: str) -> str | None:
     return None
 
 
+# Cidades de PE que a busca do OLX devolve e que NÃO são da região
+# metropolitana. Não estão aqui para serem monitoradas -- estão para serem
+# RECONHECIDAS: sem isso a detecção falha, a cidade cai no padrão do site e o
+# anúncio de Garanhuns entra na lista como Recife. Reconhecer é o que permite
+# rejeitar com motivo em vez de rotular errado.
+CIDADES_FORA_DA_REGIAO = (
+    ("garanhuns", "Garanhuns"),
+    ("gravata", "Gravatá"),
+    ("caruaru", "Caruaru"),
+    ("petrolina", "Petrolina"),
+    ("bezerros", "Bezerros"),
+    ("belo-jardim", "Belo Jardim"),
+    ("serra-talhada", "Serra Talhada"),
+    ("arcoverde", "Arcoverde"),
+    ("vitoria-de-santo-antao", "Vitória de Santo Antão"),
+    ("carpina", "Carpina"),
+    ("paudalho", "Paudalho"),
+    ("goiana", "Goiana"),
+    ("limoeiro", "Limoeiro"),
+    ("surubim", "Surubim"),
+    ("palmares", "Palmares"),
+    ("santa-cruz-do-capibaribe", "Santa Cruz do Capibaribe"),
+    ("triunfo", "Triunfo"),
+    ("bonito", "Bonito"),
+    ("nazare-da-mata", "Nazaré da Mata"),
+)
+
+
+def cidade_de_fora(texto: str | None) -> str | None:
+    """Reconhece cidade fora da região no texto do card.
+
+    A URL nem sempre denuncia (o slug do OLX costuma ser o título que o
+    anunciante escreveu), mas o card traz "Cidade, Bairro"."""
+    if not texto:
+        return None
+    alvo = _sem_acento(texto).lower()
+    for slug, nome in CIDADES_FORA_DA_REGIAO:
+        if re.search(rf"\b{slug.replace('-', '[ -]')}\b", alvo):
+            return nome
+    return None
+
+
 def cidade_do_slug(url: str) -> str | None:
     """Detecta a cidade no slug da URL (mesmo racional de bairro_do_slug)."""
     if not url:
         return None
-    alvo = url.lower()
-    for slug, nome in (
+    # "grande-recife" é o nome da REGIÃO no caminho do OLX, e está em toda URL
+    # dele -- inclusive nas de Caruaru e Garanhuns. Sem tirar isso daqui,
+    # cidade_do_slug devolvia "Recife" para o catálogo inteiro do portal, e era
+    # esse o mecanismo que rotulava anúncio do agreste como capital.
+    alvo = url.lower().replace("grande-recife", "")
+    for slug, nome in CIDADES_FORA_DA_REGIAO + (
         ("jaboatao-dos-guararapes", "Jaboatão dos Guararapes"),
         ("jaboatao", "Jaboatão dos Guararapes"),
         ("olinda", "Olinda"),
@@ -783,6 +829,13 @@ def avaliar_filtro(preco, quartos, area=None, cidade=None) -> tuple[str, list[st
     f = config.FILTROS
     perfil = config.FILTROS_POR_CIDADE.get(cidade, config.FILTRO_PADRAO)
 
+    # 0. recorte geográfico. Faltava, e o buraco era grande: a busca do OLX
+    # devolve muito além da região metropolitana, e cidade sem perfil caía no
+    # FILTRO_PADRAO (que é o de Recife) e podia ser APROVADA. Foi assim que
+    # anúncio de Caruaru entrou na lista.
+    if cidade is not None and cidade not in config.CIDADES_MONITORADAS:
+        return REPROVADO, [f"cidade fora do escopo: {cidade}"]
+
     # 1. reprovação: só com dado conhecido na mão
     if preco is not None and not (f["preco_min"] <= preco <= f["preco_max"]):
         return REPROVADO, [f"preço {preco:.0f} fora de {f['preco_min']}-{f['preco_max']}"]
@@ -796,6 +849,11 @@ def avaliar_filtro(preco, quartos, area=None, cidade=None) -> tuple[str, list[st
         motivos.append("preço ausente")
     if quartos is None and area is None:
         motivos.append("quartos e área ausentes")
+    # Cidade desconhecida não pode virar "Recife" por omissão. Numa fonte que
+    # cobre várias cidades, aprovar sem saber onde fica é afirmar o que não se
+    # sabe -- e foi exatamente o que colocou Caruaru na lista como Recife.
+    if cidade is None:
+        motivos.append("cidade ausente")
 
     return (APROVADO, []) if not motivos else (INDETERMINADO, motivos)
 

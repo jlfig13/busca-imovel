@@ -56,10 +56,16 @@ def test_soma_aluguel_condominio_e_iptu():
     assert custo["custo_completo"] is True
 
 
-def test_apartamento_caro_com_taxa_estoura_o_teto():
-    """É o motivo da segunda visita: R$ 2.900 + R$ 1.100 não cabe em 2.500."""
+def test_apartamento_caro_com_taxa_custa_muito_mais_que_o_anunciado():
+    """É o motivo da segunda visita: o card anuncia 2.900 e o custo é 4.104.
+
+    Antes este teste comparava com o teto de 2.500 do filtro de coleta. Com o
+    envelope largo (05/09/2026) o teto virou 6.000 e a comparação perdeu o
+    sentido -- mas o que o teste protege continua igual: quem manda no
+    veredito é o custo TOTAL, não o aluguel da vitrine."""
     custo = cnm._custo_do_texto(PAGINA_COM_TAXA)
-    assert custo["custo_mensal_total"] > config.FILTROS["preco_max"]
+    assert custo["custo_mensal_total"] == 4104.0
+    assert custo["custo_mensal_total"] > custo["aluguel"] * 1.4
 
 
 def test_pagina_sem_valores_nao_inventa_custo():

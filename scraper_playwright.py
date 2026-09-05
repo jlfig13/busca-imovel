@@ -207,7 +207,8 @@ def _coletar_rolando(page_obj, seletor_href: str, passo: int = 700,
     return [{"href": h, **dados} for h, dados in acumulado.items()]
 
 
-def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> dict | None:
+def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife",
+                multi_cidade: bool = False) -> dict | None:
     texto = card.get("text", "")
     url = card.get("href", "")
 
@@ -218,16 +219,28 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
     if not utils.titulo_aceito(titulo):
         return None
 
-    # cidade_padrao vem do site em config.SITES (cada portal aqui já é uma
-    # busca de cidade única, exceto OLX: busca a região metropolitana
-    # inteira, então o padrão "Cidade, Bairro" abaixo detecta a cidade
-    # real por item em vez de usar o padrão do site.
+    # cidade_padrao vem do site em config.SITES e SÓ vale para busca de uma
+    # cidade só. O OLX é multi_cidade: a busca dele devolve muito além da
+    # região metropolitana, e completar com o padrão fazia anúncio de Caruaru
+    # ou Garanhuns entrar rotulado como Recife -- e passar no filtro, porque
+    # cidade sem perfil caía no perfil de Recife.
     # Endereço estruturado do card. No Imovelweb ele vem como
     # "Av. Min. Marcos Freire\nCasa Caiada, Olinda" -- era a fonte dos
     # imóveis sem bairro que sobravam, e ainda entrega o logradouro.
     logradouro, bairro_txt, cidade_txt = utils.endereco_do_texto(texto)
 
-    cidade = cidade_txt or utils.cidade_do_slug(url) or cidade_padrao
+    # Cidade fora da região vem primeiro: é o sinal mais forte e o que evita
+    # rotular anúncio do agreste como capital. Reconhecer aqui é o que deixa o
+    # filtro rejeitar com motivo ("cidade fora do escopo: Garanhuns") em vez de
+    # aprovar como Recife.
+    cidade = (utils.cidade_de_fora(texto) or utils.cidade_de_fora(url)
+              or cidade_txt or utils.cidade_do_slug(url))
+
+    # O padrão do site só vale quando a busca É de uma cidade só. Numa fonte
+    # multi-cidade (OLX cobre muito além da região metropolitana), completar
+    # com "Recife" é inventar: fica None e o filtro trata como indeterminado.
+    if cidade is None and not multi_cidade:
+        cidade = cidade_padrao
 
     # Bairro: texto estruturado, depois slug da URL (ambos validados contra
     # a lista canônica), e só então os padrões por portal. Ver P-18: regex
@@ -334,6 +347,115 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
     return item
 
 
+# Seletores de "próxima página", do mais padronizado para o mais específico.
+# rel="next" primeiro porque é o único que é contrato, não convenção.
+_SELETORES_PROXIMA = (
+    'link[rel="next"]',
+    'a[rel="next"]',
+    'a[aria-label*="óxima" i]',
+    'a[title*="óxima" i]',
+    'a[data-testid*="next" i]',
+    '[data-testid*="pagination" i] a[aria-label*="óxima" i]',
+)
+_SELETORES_PROXIMA_BOTAO = (
+    'button[aria-label*="óxima" i]',
+    'button[data-testid*="next" i]',
+)
+
+
+def _proxima_pagina(page_obj, url_atual: str):
+    """Acha a próxima página pelo link que o próprio site publica.
+
+    Substitui o palpite `?pagina={n}`, que estava calado e errado: o OLX
+    pagina por `?o=`, e os portais do Grupo ZAP também ignoram `pagina` nessa
+    posição -- o resultado era o site devolver a MESMA primeira página, o
+    scraper ver "0 links novos" e concluir "acabaram os imóveis". Cinco
+    fontes rodavam havia semanas trazendo só a primeira página cada.
+
+    Seguir o link do site funciona nos três portais sem tabela de exceções, e
+    continua funcionando quando um deles trocar o parâmetro -- que é o
+    problema real: parâmetro de paginação é detalhe de implementação alheia.
+
+    Devolve ("ir", href, seletor) ou ("clicar", seletor, seletor); None
+    quando não há próxima. O seletor volta junto para ir ao log: sem saber
+    por qual caminho cada portal avançou, a próxima investigação recomeça do
+    zero -- foi o que aconteceu com o `?pagina={n}`, que ninguém tinha como
+    saber que estava sendo ignorado.
+    """
+    for sel in _SELETORES_PROXIMA:
+        try:
+            href = page_obj.eval_on_selector(
+                sel, "e => e.href || e.getAttribute('href')")
+        except Exception:
+            continue
+        # href igual à atual é botão desabilitado na última página
+        if href and href != url_atual:
+            return ("ir", href, sel)
+
+    botao = _proxima_pagina_botao(page_obj)
+    if botao:
+        return botao
+    return None
+
+
+def _proxima_pagina_botao(page_obj):
+    """Só o CONTROLE clicável, ignorando âncoras.
+
+    O fallback de "a lista não trocou" precisa disto: ele roda justamente
+    quando a âncora existe e não funciona, então reusar _proxima_pagina
+    devolveria a mesma âncora inútil e o clique nunca aconteceria -- foi o que
+    a rodada #53 mostrou, com Zap e Viva Real parando na p1 apesar do
+    fallback existir.
+    """
+    for sel in _SELETORES_PROXIMA_BOTAO:
+        try:
+            el = page_obj.query_selector(sel)
+        except Exception:
+            continue
+        if el and el.is_enabled() and el.is_visible():
+            return ("clicar", sel, sel)
+    return None
+
+
+def _primeiro_href(page_obj, seletor_href: str) -> str | None:
+    """Href do primeiro anúncio da página. Serve de impressão digital."""
+    try:
+        return page_obj.eval_on_selector(
+            f'a[href*="{seletor_href}"]', "e => e.href")
+    except Exception:
+        return None
+
+
+def _esperar_lista_trocar(page_obj, seletor_href: str, anterior: str | None,
+                          timeout_ms: int = 12000) -> bool:
+    """True quando o primeiro anúncio deixou de ser o da página anterior.
+
+    Zap e Viva Real são SPA: o link de "próxima página" existe e aponta para
+    `?pagina=2`, mas navegar até lá devolve o HTML da PRIMEIRA página, e a
+    troca só acontece depois que o cliente busca e re-renderiza. Sem esperar
+    por isso, a leitura pega a página velha e o scraper conclui que acabou --
+    foi o que a rodada #52 registrou: "p2 via ir" seguido de "p2 repetiu a
+    página anterior".
+
+    Comparar o primeiro href é mais barato e mais confiável que contar cards:
+    a lista muda de tamanho por lazy-load sem trocar de página.
+    """
+    if not anterior:
+        return True
+    try:
+        page_obj.wait_for_function(
+            """([sel, ant]) => {
+                 const a = document.querySelector(`a[href*="${sel}"]`);
+                 return !!a && a.href !== ant;
+               }""",
+            arg=[seletor_href, anterior],
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def scrape(site: dict) -> list[dict]:
     try:
         from playwright.sync_api import sync_playwright
@@ -352,7 +474,6 @@ def scrape(site: dict) -> list[dict]:
     cidade_padrao = site.get("cidade", "Recife")
     espera_ms = site.get("espera_ms", 2500)
     base_url = site["url_listagem"]
-    sep = "&" if "?" in base_url else "?"
     # padrao_url_pagina: alguns sites (ex: Imovelweb) paginam por sufixo no
     # path ("-pagina-2.html"), não por query string ("?pagina=2"). Quando
     # presente, "{n}" é substituído pelo número da página.
@@ -370,19 +491,32 @@ def scrape(site: dict) -> list[dict]:
             page = ctx.new_page()
             page.add_init_script(_ANTI_BOT_SCRIPT)
 
+            # A primeira é a URL de busca; da segunda em diante quem manda é
+            # o link que o site publica (ver _proxima_pagina).
+            proximo = ("ir", base_url, "url de busca")
+
             for pagina in range(1, max_paginas + 1):
-                if pagina == 1:
-                    url = base_url
-                elif padrao_url_pagina:
-                    url = padrao_url_pagina.format(n=pagina)
-                else:
-                    url = f"{base_url}{sep}pagina={pagina}"
+                if proximo is None:
+                    log.info(
+                        f"[{site['nome']}] p{pagina - 1} foi a última: "
+                        f"o site não publica próxima página"
+                    )
+                    break
+
+                acao, alvo, via = proximo
+                if pagina > 1:
+                    log.info(f"[{site['nome']}] p{pagina} via {acao}: {via}")
+                anterior = _primeiro_href(page, seletor_href) if pagina > 1 else None
                 # O Playwright não passa por utils.get_html, então o
                 # Crawl-delay precisa ser respeitado aqui também -- senão a
                 # diretiva valeria só para as fontes de requests.
-                utils.aguardar_vez(url)
+                utils.aguardar_vez(alvo if acao == "ir" else page.url)
                 try:
-                    page.goto(url, wait_until=wait_until, timeout=45000)
+                    if acao == "ir":
+                        page.goto(alvo, wait_until=wait_until, timeout=45000)
+                    else:
+                        page.click(alvo, timeout=10000)
+                        page.wait_for_load_state(wait_until, timeout=45000)
                 except Exception:
                     page.wait_for_timeout(3000)
 
@@ -395,6 +529,29 @@ def scrape(site: dict) -> list[dict]:
                     )
                 except Exception:
                     pass  # se não aparecer, tentamos mesmo assim
+
+                # Numa SPA a URL troca antes do conteúdo. Se a lista não
+                # mudou, o clique no controle costuma funcionar onde a
+                # navegação direta não funciona -- é o caminho que o leitor
+                # usa, e o único que dispara o roteador do próprio site.
+                if pagina > 1 and not _esperar_lista_trocar(page, seletor_href, anterior):
+                    botao = _proxima_pagina_botao(page)
+                    log.info(
+                        f"[{site['nome']}] p{pagina}: a navegação não trocou a "
+                        f"lista; botão de próxima: {botao[1] if botao else 'nenhum'}"
+                    )
+                    if botao:
+                        try:
+                            # o controle costuma ficar no rodapé da lista
+                            page.eval_on_selector(
+                                botao[1], "e => e.scrollIntoView({block:'center'})")
+                            page.click(botao[1], timeout=10000)
+                            _esperar_lista_trocar(page, seletor_href, anterior)
+                        except Exception as e:
+                            log.warning(
+                                f"[{site['nome']}] p{pagina}: clique falhou: "
+                                f"{str(e)[:100]}"
+                            )
 
                 # Espera de acomodação. O seletor acima só garante que o
                 # PRIMEIRO link existe -- preço, área e endereço chegam
@@ -426,7 +583,8 @@ def scrape(site: dict) -> list[dict]:
                         continue
                     vistos.add(href)
                     novos += 1
-                    item = _parse_card(c, site["nome"], cidade_padrao)
+                    item = _parse_card(c, site["nome"], cidade_padrao,
+                                       site.get("multi_cidade", False))
                     if not item:
                         resultados.stats["reprovados"] += 1
                         continue
@@ -463,8 +621,39 @@ def scrape(site: dict) -> list[dict]:
                         resultados.stats["reprovados"] += 1
 
                 log.info(f"[{site['nome']}] p{pagina}: {novos} links novos")
+                resultados.stats["paginas"] = pagina
                 if novos == 0:
+                    # Zero na p1 é fonte vazia; zero depois de uma página
+                    # cheia é a paginação repetindo conteúdo -- que foi
+                    # exatamente o defeito silencioso de `?pagina={n}`.
+                    # Distinguir os dois é a mesma regra de "não achar não é
+                    # não olhar", aplicada dentro da fonte.
+                    if pagina > 1:
+                        log.warning(
+                            f"[{site['nome']}] p{pagina} repetiu a página "
+                            f"anterior: a paginação não avançou"
+                        )
+                        resultados.stats["paginacao_travada"] = True
                     break
+
+                # Descobre a próxima AQUI, com a página atual ainda carregada.
+                if padrao_url_pagina:
+                    proximo = ("ir", padrao_url_pagina.format(n=pagina + 1),
+                               "padrao_url_pagina")
+                else:
+                    proximo = _proxima_pagina(page, page.url)
+
+                # Reserva por parâmetro, só quando o site não publica link
+                # nenhum. Fica DEPOIS da descoberta de propósito: o link do
+                # site é a verdade, o parâmetro é palpite nosso -- e palpite
+                # de parâmetro foi exatamente o que quebrou calado.
+                if proximo is None and site.get("param_pagina"):
+                    sep = "&" if "?" in base_url else "?"
+                    proximo = (
+                        "ir",
+                        f"{base_url}{sep}{site['param_pagina']}={pagina + 1}",
+                        f"reserva ?{site['param_pagina']}=",
+                    )
 
             browser.close()
     except Exception as e:

@@ -423,6 +423,53 @@ a{color:inherit;}
 .btn-backup:hover{border-color:var(--linha-forte); color:var(--tinta);}
 .backup-nota{font-size:12px; color:var(--tinta-suave);}
 
+/* ---------- painel de preferências ---------- */
+/* O recorte deixou de ser decisão do config e virou decisão de quem olha.
+   Fica num painel próprio, separado dos Filtros: filtro é o recorte do
+   momento, preferência é o que define "minha lista" e sobrevive à rodada. */
+.prefs[hidden]{display:none;}
+.prefs{
+  display:flex; flex-direction:column; gap:12px; padding:14px 0 4px;
+}
+.prefs-nota{
+  margin:0; font-size:12.5px; line-height:1.5; color:var(--tinta-suave);
+}
+.prefs-linha{display:flex; gap:8px; flex-wrap:wrap;}
+.prefs-grupo{display:flex; flex-direction:column; gap:6px;}
+.prefs-rot{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--tinta-fraca);
+  display:flex; align-items:center; gap:6px;
+}
+/* Altura limitada com rolagem PRÓPRIA: trinta bairros empurrariam a lista de
+   imóveis para fora da tela toda vez que o painel abrisse. */
+.prefs-chips{
+  display:flex; flex-wrap:wrap; gap:5px;
+  max-height:132px; overflow-y:auto;
+}
+.chip-pref{
+  height:28px; padding:0 10px; border-radius:14px; cursor:pointer;
+  border:1px solid var(--linha); background:var(--superficie);
+  color:var(--tinta-media); font-family:var(--sans); font-size:12.5px;
+}
+.chip-pref[aria-pressed="true"]{
+  background:var(--mar); border-color:var(--mar); color:#fff;
+}
+:root[data-tema="escuro"] .chip-pref[aria-pressed="true"],
+:root:not([data-tema="claro"]) .chip-pref[aria-pressed="true"]{color:#0D1114;}
+@media (prefers-color-scheme: light){
+  :root:not([data-tema="escuro"]) .chip-pref[aria-pressed="true"]{color:#fff;}
+}
+.btn-mini{
+  height:24px; padding:0 8px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--linha); background:var(--superficie);
+  color:var(--tinta-media); font-family:var(--sans); font-size:11.5px;
+  text-transform:none; letter-spacing:0;
+}
+.btn-mini:hover{border-color:var(--linha-forte); color:var(--tinta);}
+.prefs-rodape{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.prefs-conta{font-size:12px; color:var(--tinta-suave);}
+
 /* ---------- barra de filtros ---------- */
 .barra-filtros{
   display:flex; align-items:center; gap:12px; flex-wrap:wrap;

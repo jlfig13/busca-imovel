@@ -2,6 +2,152 @@
 
 ---
 
+## Fase 10 — Filtros livres e preferência do usuário (05/09/2026)
+
+Pedido: escolher faixa de valor, bairros, cidade, quartos e área livremente, e
+salvar isso no navegador, "assim qualquer pessoa pode usar a solução".
+
+- [x] **O bloqueio era de coleta, não de interface.** A faixa 1.500–2.500 e o
+  mínimo de quartos estavam cravados na URL de busca de seis fontes. Nenhum
+  trabalho de front-end mostraria um apartamento de R$ 1.200: ele nunca tinha
+  sido coletado. Separadas as duas camadas — **envelope de coleta** (o que
+  existe) e **preferências** (o que se vê).
+
+- [x] **Envelope alargado para R$ 800–6.000, 1+ quarto, 30m²+.** Escolhido com
+  o usuário entre três larguras. *Custo aceito:* mais anúncios por rodada,
+  banco maior commitado 12x/dia, rodada mais longa. *A vigiar:* se o
+  repositório crescer demais, o próximo passo é parar de versionar o `.db` a
+  cada rodada.
+
+- [x] **Preferências salvas no navegador**, reusando a mecânica da triagem
+  (Fase 7). `noRecorte` saiu do JSON: quem decide o recorte agora é a tela.
+  *Descartado:* manter o recorte no Python e só "expor" controles — seria
+  duas fontes de verdade para a mesma pergunta, e a preferência continuaria
+  presa à próxima rodada.
+
+- [x] **Bairros vêm dos dados coletados, não de `BAIRROS_EXIBIDOS`.** A lista
+  do config virou semente. Sem isso, "qualquer pessoa pode usar" seria falso:
+  a pessoa só poderia escolher entre os bairros que eu já tinha escolhido.
+
+- [x] **Lista de bairros vazia significa "qualquer um"**, não "todos os de
+  hoje" — bairro novo entra sozinho em vez de ficar de fora por ter nascido
+  depois da escolha.
+
+- [~] **Perfil por cidade virou global.** Olinda exigia 3+/70 e Recife 2+/60.
+  Uma interface de perfil por cidade não se paga para uma diferença que quem
+  está olhando resolve em dois toques. Reversível se incomodar.
+
+- [ ] **CTI ainda coleta só 2+ quartos:** `2-quartos` está no CAMINHO da
+  busca, não em query string. Falta descobrir a rota de "todos os quartos".
+
+### Fase 2 (pendente): página de KPIs
+
+Levantamento feito em 05/09, para não refazer:
+
+- **Bairro mais caro/mais barato: viável agora.** 30 bairros na rodada, vários
+  com 5 a 11 anúncios.
+- **Valorização: dado insuficiente.** 14 mudanças de preço em 17 dias. E há
+  uma armadilha metodológica: a mediana de um bairro muda quando muda a
+  COMPOSIÇÃO dos anúncios, não só quando os preços mudam — um bairro que
+  ganhou dois apartamentos grandes "valoriza" sem nenhum preço ter subido. O
+  único sinal limpo é o mesmo anúncio mudando de preço.
+- **Mapa: 0 de 73 imóveis têm latitude/longitude.** Sem serviço externo (o
+  projeto não faz fetch em runtime), as opções são embutir centroides dos
+  bairros e desenhar bolhas, ou embutir o GeoJSON dos bairros (~150 KB).
+
+---
+
+## Fase 9 — Recorte geográfico (05/09/2026)
+
+Relato: anúncios rotulados como Recife que, ao abrir, eram Garanhuns e
+Gravatá. Três causas independentes, todas nossas.
+
+- [x] **`grande-recife` está em toda URL do OLX.** É o nome da REGIÃO no
+  caminho, e `cidade_do_slug` casava com "recife" -- devolvendo "Recife" para
+  o catálogo inteiro do portal, Caruaru incluído. Era o mecanismo principal, e
+  é o tipo de defeito que só aparece quando alguém clica no anúncio.
+
+- [x] **A cidade era inventada quando a detecção falhava.** `_parse_card`
+  completava com `cidade_padrao`. Agora só fonte de cidade única usa o padrão;
+  o OLX é `multi_cidade: True` e fica com cidade vazia -- que o filtro trata
+  como INDETERMINADO. *Princípio:* completar com o valor mais provável é pior
+  que não saber, porque o palpite passa no filtro e o desconhecido não.
+
+- [x] **O filtro não tinha recorte geográfico.** `avaliar_filtro` recebia
+  `cidade` e só a usava para escolher o perfil: cidade sem perfil caía no de
+  Recife e podia ser APROVADA. Agora cidade fora de `CIDADES_MONITORADAS` é
+  REPROVADA com motivo.
+
+- [x] **`CIDADES_FORA_DA_REGIAO`**: 19 cidades do agreste, sertão e zona da
+  mata. Não estão lá para serem monitoradas -- estão para serem RECONHECIDAS.
+  Reconhecer é o que permite rejeitar com motivo em vez de rotular errado.
+
+- [x] **Recorte decidido com o usuário: Recife, Olinda e a RMR.** As 9 cidades
+  da região entram com o perfil de Recife (2+ quartos, 60m²+) e ficam fora de
+  `BAIRROS_EXIBIDOS`, então caem em "Outros bairros" em vez de disputar a
+  lista do dia. Medido sobre a rodada #53: sai 1 anúncio de 105.
+  *Descartado:* recorte estrito Recife+Olinda, que era o que o README dizia --
+  tiraria 17 anúncios de cidades vizinhas legítimas para resolver um problema
+  que era do agreste.
+
+---
+
+## Fase 8 — Cobertura: paginação, OLX Olinda, cadência (05/09/2026)
+
+- [x] **Todas as fontes de Playwright traziam só a primeira página.** O laço
+  montava a seguinte como `{base}&pagina={n}`; o OLX pagina por `?o=` e os
+  portais do Grupo ZAP ignoram `pagina` nessa posição. Os três devolviam a
+  mesma p1, o scraper lia "0 links novos" e concluía "acabaram os imóveis" --
+  semanas de catálogo truncado sem nenhum sinal. Medido na #51: Viva Real
+  30/0, Zap 30/0, Zap Olinda 13/0, Viva Real Olinda 13/0, OLX 49/0.
+  *Correção em duas etapas, e a segunda só existiu porque a primeira foi
+  instrumentada:* (1) seguir o link que o site publica, com log de por onde
+  avançou; (2) a rodada #52 revelou que Zap e Viva Real ACHAM o link, navegam
+  e a lista repete -- SPA, o parâmetro só vale no cliente. Agora espera o
+  primeiro href TROCAR e, se não trocar, clica no controle. Para o OLX, que
+  não publica link legível, ficou `param_pagina: "o"` como reserva.
+  *Resultado medido na #53:* OLX de 47 para **235 anúncios** (5 páginas), e de
+  4 para **35** dentro do filtro. No total: 73 → 131 anúncios, 41 → 73
+  imóveis, 12 → 19 no recorte. Zap e Viva Real seguiram na p1 -- o fallback de
+  clique não disparava porque reusava a busca que prefere âncora, e a âncora é
+  a que não funciona; corrigido com um localizador só de botão.
+  *Descartado:* tabela de parâmetro por portal como solução principal.
+  Parâmetro de paginação é detalhe de implementação alheia -- vira dívida na
+  primeira mudança de qualquer um dos três.
+
+- [x] **Zero links novos depois de uma página cheia virou WARNING.** Zero na
+  p1 é fonte vazia; zero na p3 é truncamento. Mesma regra de "não achar não é
+  não olhar", aplicada dentro da fonte -- e foi esse aviso que apontou a
+  etapa 2 acima.
+
+- [~] **OLX Olinda: adicionada e revertida no mesmo dia.** A hipótese era que
+  a busca de Recife fosse do município. É falso: a cidade no caminho da URL é
+  ignorada, e a entrada "de Olinda" devolveu os MESMOS 235 anúncios, com
+  Recife 15, Jaboatão 8, Paulista 5, Olinda 3, Ipojuca 2. Pior que inútil:
+  `imoveis` é chaveada por URL, então a segunda fonte só sobrescrevia a coluna
+  `site` e zerava a atribuição da primeira, além de dobrar a carga num site
+  que já devolve 403 nas páginas de detalhe. O comentário no config já dizia
+  que a busca cobre a região metropolitana; a lição agora está escrita como
+  aviso explícito ("NÃO adicione uma segunda entrada OLX"), no lugar onde a
+  próxima pessoa vai procurar. O que faltava para Olinda era paginação, e era
+  o mesmo defeito de sempre.
+
+- [x] **Cadência de 2 em 2 horas.** *A vigiar:* 12 commits/dia de um banco
+  binário. Se o repositório crescer demais, o próximo passo é parar de
+  versionar o `.db` a cada rodada e guardar só o histórico de eventos.
+
+- [x] **Hora da rodada no dashboard**, em BRT. Com 12 rodadas/dia, "05/09"
+  não diz se o dado é de agora ou de dez horas atrás.
+
+- [x] **Fotos não carregavam, e não era coleta.** 54 de 62 anúncios têm URL
+  de foto no banco. É hotlink recusado: servidas de jlfig13.github.io, os
+  CDNs dos portais recebem Referer de outra origem e negam. `<meta
+  name="referrer" content="no-referrer">` mais `referrerpolicy` na tag. O
+  `onerror` que cai no marcador cinza continua -- a degradação offline é
+  premissa do projeto.
+
+---
+
 ## Fase 7 — Persistência da triagem (22/08/2026)
 
 Relato de uso: favorito e descarte sumiam "na próxima atualização".

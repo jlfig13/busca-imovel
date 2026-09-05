@@ -1,12 +1,12 @@
 name: Monitor de Apartamentos
 
-# Roda DUAS VEZES POR DIA: 08:13 e 18:13 BRT (11:13 e 21:13 UTC), mais o
-# disparo manual.
+# Roda DE 2 EM 2 HORAS (12x/dia), mais o disparo manual.
 #
-# Duas rodadas porque anúncio de aluguel bom sai do ar no mesmo dia: com uma
-# leitura diária, o imóvel publicado de manhã e alugado à tarde nunca chega
-# a aparecer. A da tarde também pega a reprecificação, que costuma ser
-# lançada em horário comercial.
+# A cadência subiu de semanal para 2x/dia e depois para de 2 em 2 horas,
+# sempre pelo mesmo motivo, cada vez mais visível: anúncio de aluguel bom
+# sai do ar em horas. Com duas leituras diárias, o imóvel publicado às 9h e
+# alugado às 15h nunca chegava a aparecer -- e o histórico de preço só
+# registrava o degrau, nunca o momento.
 #
 # O minuto 13 é de propósito. Cron de hora cheia ("0 11 * * *") cai na
 # janela de maior concorrência do GitHub e costuma atrasar de 10 a 30 min --
@@ -18,8 +18,13 @@ name: Monitor de Apartamentos
 # execuções produziram 261 pontos de histórico e ZERO mudança observada.
 on:
   schedule:
-    - cron: "13 11 * * *"
-    - cron: "13 21 * * *"
+    # De 2 em 2 horas, no minuto 13 (ver acima o porquê do minuto quebrado).
+    # Era 2x/dia. Aluguel bom sai do ar em horas, não em dias: com duas
+    # leituras diárias, o imóvel publicado às 9h e alugado às 15h nunca
+    # chegava a aparecer. São 12 rodadas/dia -- e 12 commits do banco, que é
+    # binário: a poda diária de inativos e o VACUUM de domingo passam a ser
+    # o que segura o tamanho do repositório, não mais um detalhe.
+    - cron: "13 */2 * * *"
   workflow_dispatch: {}
 
 permissions:

@@ -10,31 +10,78 @@ import re
 # ---------------------------------------------------------------------------
 # FILTROS DE BUSCA
 # ---------------------------------------------------------------------------
+# ENVELOPE DE COLETA -- o que ENTRA no banco. Não confundir com preferência:
+# o dashboard filtra livremente dentro deste envelope, e nada fora dele pode
+# ser exibido, porque nunca foi coletado.
+#
+# Até 05/09/2026 os dois eram a mesma coisa, e a faixa 1.500-2.500 estava
+# cravada na URL de busca de seis fontes. Consequência: quem quisesse ver um
+# apartamento de R$ 1.200 no dashboard não conseguia, e nenhum trabalho de
+# interface resolveria -- o anúncio nunca tinha sido coletado.
+#
+# O envelope é largo de propósito e mais caro de propósito: cada ponto a mais
+# de largura é anúncio a mais por rodada, banco maior (commitado 12x/dia) e
+# rodada mais longa. É o preço de "escolha livre" ser verdade.
 FILTROS = {
-    # piso zero: anúncio barato demais costuma ser erro de digitação ou
-    # quarto anunciado como apartamento, mas cortar por preço mínimo também
-    # escondia oportunidade real. Quem julga isso é o olho, no dashboard.
-    "preco_min": 0,
-    "preco_max": 2500,
+    # piso 800: abaixo disso, em Recife, o anúncio de apartamento é quase
+    # sempre quarto, vaga de garagem ou erro de digitação.
+    "preco_min": 800,
+    "preco_max": 6000,
 }
 
 # quartos_min/area_min variam por cidade -- Olinda tem exigência maior
 # (imóvel menor lá compensa menos que em Recife). Cidade de um imóvel vem
 # do campo "cidade" do site em config.SITES, ou detectada no próprio card
 # (ex: OLX busca a região metropolitana inteira e mistura Recife/Olinda/
-# Jaboatão num resultado só). Cidade sem entrada aqui cai no perfil padrão.
+# Jaboatão num resultado só).
+#
+# Estar aqui é o que AUTORIZA a cidade a entrar no catálogo: quem manda no
+# recorte geográfico é este dicionário (ver CIDADES_MONITORADAS abaixo).
+# Antes de 05/09/2026 não havia recorte nenhum, e cidade sem entrada caía no
+# perfil de Recife -- foi assim que anúncio de Caruaru entrou na lista.
+# Perfil de COLETA por cidade. Vale como piso do envelope, não como
+# preferência: quem decide quartos e área é quem está olhando, no dashboard.
 FILTROS_POR_CIDADE = {
-    "Recife": {"quartos_min": 2, "area_min": 60},
-    "Olinda": {"quartos_min": 3, "area_min": 70},
+    "Recife": {"quartos_min": 1, "area_min": 30},
+    "Olinda": {"quartos_min": 1, "area_min": 30},
 }
+
+# Demais cidades da Região Metropolitana do Recife. Entram com o perfil de
+# Recife como ponto de partida -- não há motivo medido para exigir diferente
+# delas, e um perfil frouxo demais aparece no dashboard, onde dá para julgar.
+# Ficam FORA do recorte de bairros (BAIRROS_EXIBIDOS não tem entrada para
+# elas), então caem em "Outros bairros" em vez de disputar a lista do dia.
+for _cidade_rmr in (
+    "Jaboatão dos Guararapes", "Paulista", "Camaragibe", "Igarassu",
+    "Ipojuca", "Cabo de Santo Agostinho", "Abreu e Lima",
+    "São Lourenço da Mata", "Moreno",
+):
+    FILTROS_POR_CIDADE.setdefault(_cidade_rmr, dict(FILTROS_POR_CIDADE["Recife"]))
+del _cidade_rmr
+
 FILTRO_PADRAO = FILTROS_POR_CIDADE["Recife"]
+
+# Cidades que o projeto monitora. Derivado de FILTROS_POR_CIDADE de propósito:
+# cidade sem perfil declarado não tem como ser avaliada, então não pode entrar.
+#
+# Existe porque o filtro não tinha recorte geográfico nenhum: a busca do OLX
+# devolve muito além da região metropolitana (Caruaru, Garanhuns, Gravatá
+# apareceram), e qualquer cidade caía no FILTRO_PADRAO e podia ser aprovada.
+# Anúncio de Garanhuns num monitor de Recife não é ruído: é resposta errada.
+#
+# O recorte hoje é Recife, Olinda e a Região Metropolitana. Para incluir outra
+# cidade, basta dar a ela um perfil em FILTROS_POR_CIDADE: os dois andam
+# juntos de propósito, porque avaliar sem perfil é o que causava o problema.
+CIDADES_MONITORADAS = tuple(FILTROS_POR_CIDADE)
 
 # ---------------------------------------------------------------------------
 # BAIRROS EXIBIDOS
 # ---------------------------------------------------------------------------
 # A COLETA continua na cidade inteira -- é ela que alimenta o histórico de
-# preço e a detecção de imóvel repetido entre portais. O que esta lista
-# restringe é a APRESENTAÇÃO: dashboard e planilha mostram só estes bairros.
+# preço e a detecção de imóvel repetido entre portais. Esta lista é a
+# PREFERÊNCIA INICIAL de bairros: o valor com que o dashboard abre para quem
+# nunca mexeu nos controles. A partir de 05/09/2026 quem manda é a preferência
+# salva no navegador; isto aqui é só a semente.
 #
 # Separar as duas coisas é de propósito. Filtrar na coleta faria o banco
 # perder a série de um imóvel assim que a lista mudasse, e mudar de ideia
@@ -97,6 +144,30 @@ PERFIL = {
 MAX_DIAS_DESDE_ATUALIZACAO = 30
 
 # ---------------------------------------------------------------------------
+# PREFERÊNCIAS PADRÃO (apresentação)
+# ---------------------------------------------------------------------------
+# Com o que o dashboard abre para quem nunca mexeu nos controles. Daí em
+# diante quem manda é o que a pessoa salvou no navegador.
+#
+# São exatamente os valores que até 05/09/2026 estavam cravados na coleta --
+# viraram ponto de partida em vez de teto. Quem quiser 1 quarto ou R$ 4.000
+# agora muda na tela, e o dado já está no banco.
+#
+# Simplificação assumida: quartos e área passam a ser globais, não por cidade.
+# Antes Olinda exigia 3+/70m² e Recife 2+/60m². Manter dois perfis obrigaria a
+# uma interface de perfil por cidade para uma diferença que quem está olhando
+# resolve em dois toques.
+PREFERENCIAS_PADRAO = {
+    "preco_min": 1500,
+    "preco_max": 2500,
+    "quartos_min": 2,
+    "area_min": 60,
+    "area_max": None,
+    "cidades": ["Recife", "Olinda"],
+    "bairros": sorted({b for lista in BAIRROS_EXIBIDOS.values() for b in lista}),
+}
+
+# ---------------------------------------------------------------------------
 # ARQUIVOS DE SAÍDA
 # ---------------------------------------------------------------------------
 PASTA_SAIDA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saida")
@@ -138,6 +209,11 @@ SITES = [
         "base_url": "https://www.luizapariziimoveis.com.br",
     },
     {
+        # ESTREITAMENTO CONHECIDO: "2-quartos" faz parte do CAMINHO da busca,
+        # não é query string. Trocar por "todos" arrisca 404 e não foi
+        # verificado ao vivo, então esta fonte segue coletando só 2+ quartos
+        # enquanto as outras já vêm no envelope largo. Vale conferir a rota de
+        # "todos os quartos" no site e trocar aqui.
         "nome": "CTI Imobiliária",
         "tipo": "playwright",
         "url_listagem": (
@@ -548,6 +624,11 @@ SITES = [
         # o OLX renderiza preço/área num segundo passe; com menos de 4 s a
         # maioria dos cards sai sem preço e vira indeterminado
         "espera_ms": 4000,
+        # O OLX não publica link de "próxima página" que o scraper consiga
+        # ler -- verificado na rodada #52, que registrou "o site não publica
+        # próxima página" e parou na p1 com 47 anúncios. Aqui a reserva por
+        # parâmetro é o caminho, e o parâmetro dele é `o`, não `pagina`.
+        "param_pagina": "o",
         "obs": (
             "REATIVADO em 18/08/2026. O diagnóstico anterior apontava para o "
             "payload RSC (window.__next_f), mas ele vem vazio no momento da "
@@ -559,6 +640,20 @@ SITES = [
             "(nível de 103 chars), enquanto o bairro só aparece no pai "
             "(SECTION de 185 chars) -- daí todo anúncio vir sem bairro."
         ),
+        # A busca cobre MUITO além da região metropolitana (Caruaru,
+        # Garanhuns e Gravatá apareceram). Por isso multi_cidade: sem ela, o
+        # anúncio cuja cidade não foi detectada era completado com "Recife" --
+        # inventar cidade é pior que não saber, porque passa no filtro.
+        "multi_cidade": True,
+        # NÃO adicione uma segunda entrada OLX para Olinda: tentado em
+        # 05/09/2026 e revertido no mesmo dia. A cidade no caminho da URL
+        # (.../recife-e-regiao/olinda) é ignorada pela busca -- as duas
+        # entradas trouxeram os MESMOS 235 anúncios, e a segunda só
+        # sobrescreveu a coluna `site`, fazendo a primeira aparecer com zero.
+        # A rodada de validação devolveu, pela entrada "de Olinda": Recife 15,
+        # Jaboatão 8, Paulista 5, Olinda 3, Ipojuca 2, Igarassu 1,
+        # Camaragibe 1. Olinda já vem por aqui; o que faltava era paginação.
+        #
         # metropolitana inteira (Recife/Olinda/Jaboatão/...), então
         # scraper_playwright._parse_card detecta a cidade por item a
         # partir do padrão "Cidade, Bairro" do próprio card. Isso aqui só
@@ -594,7 +689,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.vivareal.com.br/aluguel/pernambuco/recife/apartamento_residencial/"
-            "?quartos=2&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.vivareal.com.br",
         "cidade": "Recife",
@@ -604,7 +699,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.vivareal.com.br/aluguel/pernambuco/olinda/apartamento_residencial/"
-            "?quartos=3&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.vivareal.com.br",
         "cidade": "Olinda",
@@ -614,7 +709,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.zapimoveis.com.br/aluguel/apartamentos/pe+recife/"
-            "?quartos=2&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.zapimoveis.com.br",
         "cidade": "Recife",
@@ -624,7 +719,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.zapimoveis.com.br/aluguel/apartamentos/pe+olinda/"
-            "?quartos=3&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.zapimoveis.com.br",
         "cidade": "Olinda",

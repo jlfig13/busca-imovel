@@ -5,10 +5,27 @@ Robô que busca apartamentos para alugar em Recife e Olinda em ~20 sites
 locais), roda **2x por dia no GitHub Actions** e publica o resultado
 num **dashboard online** (GitHub Pages) — sem e-mail, é consulta direta.
 
-**Filtros atuais** (`config.py`):
+**Duas camadas de filtro, e a diferença importa:**
+
+- **Envelope de coleta** (`config.FILTROS` + `FILTROS_POR_CIDADE`): o que entra
+  no banco. Hoje R$ 800–6.000, 1+ quarto, 30m²+. Nada fora dele pode aparecer
+  no dashboard, porque nunca foi coletado.
+- **Preferências** (no dashboard, salvas no navegador): o recorte de quem está
+  olhando — faixa de preço, quartos, área mín/máx, cidades e bairros. Abrem no
+  padrão de `config.PREFERENCIAS_PADRAO` e mudam com um toque, sem esperar a
+  próxima rodada. É o que permite que outra pessoa use o mesmo dashboard com o
+  critério dela.
+
+**Recorte geográfico:** Recife, Olinda e a Região Metropolitana (Jaboatão,
+Paulista, Camaragibe, Igarassu, Ipojuca, Cabo, Abreu e Lima, São Lourenço da
+Mata, Moreno). Quem manda é `FILTROS_POR_CIDADE`: ter perfil ali é o que
+autoriza a cidade a entrar. Cidade fora disso é rejeitada com motivo, e cidade
+não identificada fica indeterminada — nunca é completada com "Recife".
+
+**Preferência inicial** (`config.PREFERENCIAS_PADRAO`, editável na tela):
 - Preço: R$ 1.500 – 2.500
-- Recife: 2+ quartos, 60m²+
-- Olinda: 3+ quartos, 70m²+
+- 2+ quartos, 60m²+
+- Recife e Olinda, nos bairros preferidos
 
 Veja [BACKLOG.md](BACKLOG.md) para o roadmap de melhorias em andamento.
 
@@ -73,7 +90,7 @@ Na primeira execução (banco vazio) tudo aparece como "novo" — é esperado.
 
 | Fonte | Cidade | Tipo |
 |---|---|---|
-| OLX Imóveis | Recife/Olinda/Jaboatão (busca região inteira, cidade detectada por anúncio) | Playwright |
+| OLX Imóveis | busca muito além da RMR (chega a Caruaru/Garanhuns); cidade detectada por anúncio, fora do recorte é rejeitado | Playwright |
 | Viva Real / Viva Real Olinda | Recife / Olinda | Playwright |
 | Zap Imóveis / Zap Imóveis Olinda | Recife / Olinda | Playwright |
 | REMAX Recife / REMAX Olinda | Recife / Olinda | Playwright |
