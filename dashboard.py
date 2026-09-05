@@ -234,7 +234,11 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
             "url": urls_item[0] if urls_item else "#",
             "fotos": i.get("fotos") or ([i["foto"]] if i.get("foto") else []),
             "novo": bool(i.get("novo")),
-            "noRecorte": bool(i.get("noRecorte", True)),
+            # noRecorte NÃO vai mais para o JSON: quem decide o recorte é a
+            # preferência salva no navegador. O campo continua existindo no
+            # item porque main.py o usa para escolher de quem buscar galeria e
+            # o que entra na planilha -- mas mandá-lo para a tela agora só
+            # criaria duas fontes de verdade para a mesma pergunta.
             "historico": hist,
             "queda": queda,
             "quedaPct": queda_pct,
@@ -251,6 +255,17 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 
     json_dados = json.dumps(dados, ensure_ascii=False).replace("</", "<\\/")
     json_semente = json.dumps(_ler_triagem(), ensure_ascii=False)
+    # Preferências: o dashboard passa a recortar no navegador, então precisa
+    # do padrão (para quem nunca mexeu) e do universo de escolhas (todas as
+    # cidades e bairros que a coleta trouxe -- não a lista fixa do config,
+    # senão ninguém consegue escolher um bairro que não seja o meu).
+    json_prefs = json.dumps(config.PREFERENCIAS_PADRAO, ensure_ascii=False)
+    bairros_por_cidade: dict[str, list[str]] = {}
+    for d in dados:
+        if d["cidade"] and d["bairro"]:
+            bairros_por_cidade.setdefault(d["cidade"], set()).add(d["bairro"])
+    bairros_por_cidade = {c: sorted(b) for c, b in sorted(bairros_por_cidade.items())}
+    json_bairros = json.dumps(bairros_por_cidade, ensure_ascii=False)
     ic = design.ICONES
     hoje = date.today().strftime("%d/%m/%Y")
     # Hora da rodada em BRT. O runner do Actions roda em UTC e o dashboard é
@@ -358,7 +373,7 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     <button class="chip-escopo" id="e-meus" type="button" aria-pressed="true">
       Minhas preferências <span class="chip-n" id="n-meus"></span></button>
     <button class="chip-escopo" id="e-outros" type="button" aria-pressed="false">
-      Outros bairros <span class="chip-n" id="n-outros"></span></button>
+      Fora delas <span class="chip-n" id="n-outros"></span></button>
     <button class="chip-escopo" id="e-favoritos" type="button" aria-pressed="false">
       {ic['estrela']} Favoritos <span class="chip-n" id="n-favoritos"></span></button>
     <button class="chip-escopo" id="e-lixeira" type="button" aria-pressed="false">
@@ -380,12 +395,61 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     <span class="backup-nota" id="backup-nota"></span>
   </div>
 
+  <div class="prefs" id="prefs" hidden>
+    <p class="prefs-nota">Vale para "Minhas preferências". Fica salvo neste
+      navegador — o resto continua visível em "Fora das preferências".</p>
+
+    <div class="prefs-linha">
+      <label class="campo preco">{ic['moeda']}
+        <input id="p-preco-min" type="number" inputmode="numeric" placeholder="mín"
+               aria-label="Preço mínimo preferido">
+        <span class="sep">–</span>
+        <input id="p-preco-max" type="number" inputmode="numeric" placeholder="máx"
+               aria-label="Preço máximo preferido">
+      </label>
+      <label class="campo">
+        <select id="p-quartos" aria-label="Quartos mínimos">
+          <option value="0">Quartos: qualquer</option><option value="1">1+</option>
+          <option value="2">2+</option><option value="3">3+</option>
+          <option value="4">4+</option>
+        </select>
+      </label>
+      <label class="campo preco">
+        <input id="p-area-min" type="number" inputmode="numeric" placeholder="m² mín"
+               aria-label="Área mínima">
+        <span class="sep">–</span>
+        <input id="p-area-max" type="number" inputmode="numeric" placeholder="m² máx"
+               aria-label="Área máxima">
+      </label>
+    </div>
+
+    <div class="prefs-grupo">
+      <span class="prefs-rot">Cidades</span>
+      <div class="prefs-chips" id="p-cidades"></div>
+    </div>
+    <div class="prefs-grupo">
+      <span class="prefs-rot">Bairros <button class="btn-mini" id="p-bairros-todos"
+        type="button">qualquer um</button><button class="btn-mini" id="p-bairros-nenhum"
+        type="button">os do padrão</button></span>
+      <div class="prefs-chips" id="p-bairros"></div>
+    </div>
+
+    <div class="prefs-rodape">
+      <button class="btn-mini" id="p-restaurar" type="button">Restaurar padrão</button>
+      <span class="prefs-conta" id="p-conta"></span>
+    </div>
+  </div>
+
   <div class="barra-filtros" id="barra-filtros">
     <button class="btn-filtros" id="btn-filtros" type="button"
             aria-expanded="false" aria-controls="filtros">
       {ic['filtro']} Filtros
       <span class="filtros-n" id="filtros-n" hidden></span>
       <span class="seta">{ic['seta']}</span>
+    </button>
+    <button class="btn-filtros" id="btn-prefs" type="button"
+            aria-expanded="false" aria-controls="prefs">
+      {ic['estrela']} Preferências
     </button>
     <span class="contagem" id="contagem"></span>
   </div>
@@ -458,6 +522,8 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 <script>
 const DADOS = {json_dados};
 const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
+const PREFS_PADRAO = {json_prefs};
+const BAIRROS_POR_CIDADE = {json_bairros};
 const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto', 'seta',
                         'estrela', 'descartar', 'restaurar', 'lixeira')}, ensure_ascii=False)};
 
@@ -604,6 +670,44 @@ function alternar(d, chave, lista){{
   return !ligado;
 }}
 
+/* ---------- preferências ----------
+   Até 05/09/2026 o recorte era decidido no Python (config.BAIRROS_EXIBIDOS) e
+   chegava pronto em cada item, como `noRecorte`. Isso tornava impossível o que
+   se pede aqui: mudar de ideia sem esperar a próxima rodada. Agora o Python
+   manda o UNIVERSO (tudo que a coleta trouxe) e o recorte acontece na tela.
+
+   O envelope de coleta continua sendo o limite duro: nada fora dele existe no
+   arquivo, e por isso ele foi alargado junto (config.FILTROS). */
+function lerPrefs(){{
+  const salvo = lerLista('preferencias');
+  // Object.assign e não spread aninhado: preferência salva com versão antiga
+  // do arquivo pode não ter todas as chaves, e faltar chave tem de cair no
+  // padrão em vez de virar undefined no meio de uma comparação.
+  return Object.assign({{}}, PREFS_PADRAO, salvo || {{}});
+}}
+let PREFS = lerPrefs();
+
+function gravarPrefs(){{
+  gravarLista('preferencias', PREFS);
+}}
+
+/* Um imóvel atende a preferência quando NADA nela o exclui. Campo ausente no
+   imóvel não exclui: "não sei a área" não é "área errada" -- é a mesma regra
+   de três estados do filtro de coleta. */
+function atendePrefs(d){{
+  const p = PREFS;
+  if (p.preco_min != null && d.preco != null && d.preco < p.preco_min) return false;
+  if (p.preco_max != null && d.preco != null && d.preco > p.preco_max) return false;
+  if (p.quartos_min && d.quartos != null && d.quartos < p.quartos_min) return false;
+  if (p.area_min != null && d.area != null && d.area < p.area_min) return false;
+  if (p.area_max != null && d.area != null && d.area > p.area_max) return false;
+  if (p.cidades && p.cidades.length && !p.cidades.includes(d.cidade)) return false;
+  // bairro vazio na preferência = qualquer bairro daquela cidade serve
+  if (p.bairros && p.bairros.length && d.bairro && !p.bairros.includes(d.bairro))
+    return false;
+  return true;
+}}
+
 /* Descartado sai das duas listas de bairro E das contagens -- senão o número
    do topo volta a discordar do que está na tela, que é o problema que a
    contagem dinâmica veio resolver. Favorito NÃO some das listas: continua
@@ -612,8 +716,8 @@ function noEscopo(d){{
   if (escopo === 'lixeira') return descartado(d);
   if (descartado(d)) return false;
   if (escopo === 'favoritos') return favorito(d);
-  if (escopo === 'outros') return !d.noRecorte;
-  return d.noRecorte;
+  if (escopo === 'outros') return !atendePrefs(d);
+  return atendePrefs(d);
 }}
 
 /* ---------- filtros ---------- */
@@ -799,6 +903,103 @@ el('inp-restaurar').addEventListener('change', ev => {{
   ev.target.value = '';
 }});
 
+/* ---------- painel de preferências ---------- */
+const CAMPOS_PREF = [
+  ['preco_min', 'p-preco-min'], ['preco_max', 'p-preco-max'],
+  ['area_min', 'p-area-min'], ['area_max', 'p-area-max'],
+];
+
+function chip(rot, ligado){{
+  return `<button class="chip-pref" type="button" data-v="${{esc(rot)}}"
+           aria-pressed="${{ligado}}">${{esc(rot)}}</button>`;
+}}
+
+function desenharPrefs(){{
+  for (const [chave, id] of CAMPOS_PREF)
+    el(id).value = PREFS[chave] == null ? '' : PREFS[chave];
+  el('p-quartos').value = String(PREFS.quartos_min || 0);
+
+  const cidades = Object.keys(BAIRROS_POR_CIDADE);
+  el('p-cidades').innerHTML = cidades
+    .map(c => chip(c, (PREFS.cidades || []).includes(c))).join('');
+
+  // Só os bairros das cidades escolhidas: a lista inteira das 11 cidades
+  // seria uma parede de chips onde ninguém acha o próprio bairro.
+  const doSelecionado = (PREFS.cidades && PREFS.cidades.length
+    ? PREFS.cidades : cidades);
+  const bairros = [...new Set(doSelecionado
+    .flatMap(c => BAIRROS_POR_CIDADE[c] || []))].sort();
+  el('p-bairros').innerHTML = bairros
+    .map(b => chip(b, (PREFS.bairros || []).includes(b))).join('');
+
+  const n = DADOS.filter(d => !descartado(d) && atendePrefs(d)).length;
+  el('p-conta').textContent = `${{n}} de ${{DADOS.length}} imóveis atendem`;
+}}
+
+function aplicarPrefs(){{
+  desenharPrefs();
+  gravarPrefs();
+  pintarEscopo();
+  pintarPulso();
+  preencherBairros();
+  render();
+}}
+
+for (const [chave, id] of CAMPOS_PREF){{
+  el(id).addEventListener('change', () => {{
+    const v = el(id).value.trim();
+    PREFS[chave] = v === '' ? null : Number(v);
+    aplicarPrefs();
+  }});
+}}
+el('p-quartos').addEventListener('change', () => {{
+  PREFS.quartos_min = Number(el('p-quartos').value) || 0;
+  aplicarPrefs();
+}});
+
+/* Delegação: os chips são redesenhados a cada mudança, então ouvir no
+   contêiner evita religar dezenas de handlers a cada toque. */
+function ligarChips(idContainer, chave){{
+  el(idContainer).addEventListener('click', ev => {{
+    const b = ev.target.closest('.chip-pref');
+    if (!b) return;
+    const v = b.dataset.v;
+    const lista = PREFS[chave] ? [...PREFS[chave]] : [];
+    const i = lista.indexOf(v);
+    if (i >= 0) lista.splice(i, 1); else lista.push(v);
+    PREFS[chave] = lista;
+    aplicarPrefs();
+  }});
+}}
+ligarChips('p-cidades', 'cidades');
+ligarChips('p-bairros', 'bairros');
+
+/* "Todos" LIMPA a seleção, não marca tudo. Lista vazia quer dizer "qualquer
+   bairro serve", e isso é melhor que marcar os 30 de hoje: bairro que
+   aparecer amanhã entra sozinho, em vez de ficar de fora por ter nascido
+   depois da escolha. "Nenhum" marcaria zero bairros, o que esconderia a lista
+   inteira -- por isso o segundo botão restaura os bairros do padrão. */
+el('p-bairros-todos').addEventListener('click', () => {{
+  PREFS.bairros = [];
+  aplicarPrefs();
+}});
+el('p-bairros-nenhum').addEventListener('click', () => {{
+  PREFS.bairros = [...(PREFS_PADRAO.bairros || [])];
+  aplicarPrefs();
+}});
+el('p-restaurar').addEventListener('click', () => {{
+  PREFS = Object.assign({{}}, PREFS_PADRAO);
+  aplicarPrefs();
+}});
+
+const btnPrefs = el('btn-prefs'), painelPrefs = el('prefs');
+btnPrefs.addEventListener('click', () => {{
+  const aberto = btnPrefs.getAttribute('aria-expanded') === 'true';
+  btnPrefs.setAttribute('aria-expanded', String(!aberto));
+  painelPrefs.hidden = aberto;
+  if (!aberto) desenharPrefs();
+}});
+
 /* Liga (ou desliga) um chip e leva o olho até a lista. Sem a rolagem, no
    celular o clique no número não parece ter feito nada: o efeito acontece
    abaixo da dobra. */
@@ -820,8 +1021,8 @@ const BOTOES_ESCOPO = {{
    faria a aba prometer imóveis que a lista não mostra. */
 function pintarEscopo(){{
   const vivos = DADOS.filter(d => !descartado(d));
-  el('n-meus').textContent = vivos.filter(d => d.noRecorte).length;
-  el('n-outros').textContent = vivos.filter(d => !d.noRecorte).length;
+  el('n-meus').textContent = vivos.filter(atendePrefs).length;
+  el('n-outros').textContent = vivos.filter(d => !atendePrefs(d)).length;
   el('n-favoritos').textContent = vivos.filter(favorito).length;
   el('n-lixeira').textContent = DADOS.filter(descartado).length;
 }}
@@ -1223,6 +1424,7 @@ function lerUrl(){{
 }}
 
 lerUrl();
+desenharPrefs();
 pintarEscopo();
 pintarBackup();
 pintarAvisoArmazenamento();

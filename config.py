@@ -10,12 +10,23 @@ import re
 # ---------------------------------------------------------------------------
 # FILTROS DE BUSCA
 # ---------------------------------------------------------------------------
+# ENVELOPE DE COLETA -- o que ENTRA no banco. Não confundir com preferência:
+# o dashboard filtra livremente dentro deste envelope, e nada fora dele pode
+# ser exibido, porque nunca foi coletado.
+#
+# Até 05/09/2026 os dois eram a mesma coisa, e a faixa 1.500-2.500 estava
+# cravada na URL de busca de seis fontes. Consequência: quem quisesse ver um
+# apartamento de R$ 1.200 no dashboard não conseguia, e nenhum trabalho de
+# interface resolveria -- o anúncio nunca tinha sido coletado.
+#
+# O envelope é largo de propósito e mais caro de propósito: cada ponto a mais
+# de largura é anúncio a mais por rodada, banco maior (commitado 12x/dia) e
+# rodada mais longa. É o preço de "escolha livre" ser verdade.
 FILTROS = {
-    # piso zero: anúncio barato demais costuma ser erro de digitação ou
-    # quarto anunciado como apartamento, mas cortar por preço mínimo também
-    # escondia oportunidade real. Quem julga isso é o olho, no dashboard.
-    "preco_min": 0,
-    "preco_max": 2500,
+    # piso 800: abaixo disso, em Recife, o anúncio de apartamento é quase
+    # sempre quarto, vaga de garagem ou erro de digitação.
+    "preco_min": 800,
+    "preco_max": 6000,
 }
 
 # quartos_min/area_min variam por cidade -- Olinda tem exigência maior
@@ -28,9 +39,11 @@ FILTROS = {
 # recorte geográfico é este dicionário (ver CIDADES_MONITORADAS abaixo).
 # Antes de 05/09/2026 não havia recorte nenhum, e cidade sem entrada caía no
 # perfil de Recife -- foi assim que anúncio de Caruaru entrou na lista.
+# Perfil de COLETA por cidade. Vale como piso do envelope, não como
+# preferência: quem decide quartos e área é quem está olhando, no dashboard.
 FILTROS_POR_CIDADE = {
-    "Recife": {"quartos_min": 2, "area_min": 60},
-    "Olinda": {"quartos_min": 3, "area_min": 70},
+    "Recife": {"quartos_min": 1, "area_min": 30},
+    "Olinda": {"quartos_min": 1, "area_min": 30},
 }
 
 # Demais cidades da Região Metropolitana do Recife. Entram com o perfil de
@@ -65,8 +78,10 @@ CIDADES_MONITORADAS = tuple(FILTROS_POR_CIDADE)
 # BAIRROS EXIBIDOS
 # ---------------------------------------------------------------------------
 # A COLETA continua na cidade inteira -- é ela que alimenta o histórico de
-# preço e a detecção de imóvel repetido entre portais. O que esta lista
-# restringe é a APRESENTAÇÃO: dashboard e planilha mostram só estes bairros.
+# preço e a detecção de imóvel repetido entre portais. Esta lista é a
+# PREFERÊNCIA INICIAL de bairros: o valor com que o dashboard abre para quem
+# nunca mexeu nos controles. A partir de 05/09/2026 quem manda é a preferência
+# salva no navegador; isto aqui é só a semente.
 #
 # Separar as duas coisas é de propósito. Filtrar na coleta faria o banco
 # perder a série de um imóvel assim que a lista mudasse, e mudar de ideia
@@ -129,6 +144,30 @@ PERFIL = {
 MAX_DIAS_DESDE_ATUALIZACAO = 30
 
 # ---------------------------------------------------------------------------
+# PREFERÊNCIAS PADRÃO (apresentação)
+# ---------------------------------------------------------------------------
+# Com o que o dashboard abre para quem nunca mexeu nos controles. Daí em
+# diante quem manda é o que a pessoa salvou no navegador.
+#
+# São exatamente os valores que até 05/09/2026 estavam cravados na coleta --
+# viraram ponto de partida em vez de teto. Quem quiser 1 quarto ou R$ 4.000
+# agora muda na tela, e o dado já está no banco.
+#
+# Simplificação assumida: quartos e área passam a ser globais, não por cidade.
+# Antes Olinda exigia 3+/70m² e Recife 2+/60m². Manter dois perfis obrigaria a
+# uma interface de perfil por cidade para uma diferença que quem está olhando
+# resolve em dois toques.
+PREFERENCIAS_PADRAO = {
+    "preco_min": 1500,
+    "preco_max": 2500,
+    "quartos_min": 2,
+    "area_min": 60,
+    "area_max": None,
+    "cidades": ["Recife", "Olinda"],
+    "bairros": sorted({b for lista in BAIRROS_EXIBIDOS.values() for b in lista}),
+}
+
+# ---------------------------------------------------------------------------
 # ARQUIVOS DE SAÍDA
 # ---------------------------------------------------------------------------
 PASTA_SAIDA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saida")
@@ -170,6 +209,11 @@ SITES = [
         "base_url": "https://www.luizapariziimoveis.com.br",
     },
     {
+        # ESTREITAMENTO CONHECIDO: "2-quartos" faz parte do CAMINHO da busca,
+        # não é query string. Trocar por "todos" arrisca 404 e não foi
+        # verificado ao vivo, então esta fonte segue coletando só 2+ quartos
+        # enquanto as outras já vêm no envelope largo. Vale conferir a rota de
+        # "todos os quartos" no site e trocar aqui.
         "nome": "CTI Imobiliária",
         "tipo": "playwright",
         "url_listagem": (
@@ -645,7 +689,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.vivareal.com.br/aluguel/pernambuco/recife/apartamento_residencial/"
-            "?quartos=2&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.vivareal.com.br",
         "cidade": "Recife",
@@ -655,7 +699,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.vivareal.com.br/aluguel/pernambuco/olinda/apartamento_residencial/"
-            "?quartos=3&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.vivareal.com.br",
         "cidade": "Olinda",
@@ -665,7 +709,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.zapimoveis.com.br/aluguel/apartamentos/pe+recife/"
-            "?quartos=2&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.zapimoveis.com.br",
         "cidade": "Recife",
@@ -675,7 +719,7 @@ SITES = [
         "tipo": "playwright",
         "url_listagem": (
             "https://www.zapimoveis.com.br/aluguel/apartamentos/pe+olinda/"
-            "?quartos=3&precoMinimo=1500&precoMaximo=2500"
+            "?precoMinimo={preco_min}&precoMaximo={preco_max}"
         ),
         "base_url": "https://www.zapimoveis.com.br",
         "cidade": "Olinda",

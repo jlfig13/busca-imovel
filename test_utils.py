@@ -131,8 +131,16 @@ def test_passa_no_filtro_dentro_da_faixa():
     assert utils.passa_no_filtro(2000, 3) is True
 
 
-def test_passa_no_filtro_preco_fora_da_faixa():
-    assert utils.passa_no_filtro(5000, 3) is False
+def test_passa_no_filtro_preco_fora_do_envelope():
+    """Em 05/09/2026 a faixa deixou de ser preferência e virou ENVELOPE.
+
+    Antes o filtro de coleta era 1.500-2.500, os mesmos números que hoje são a
+    preferência inicial do dashboard. R$ 5.000 era reprovado na coleta e por
+    isso não existia no banco -- nenhum controle na tela podia mostrá-lo.
+    Agora entra, e quem recorta é quem está olhando."""
+    assert utils.passa_no_filtro(500, 3) is False, "abaixo do piso do envelope"
+    assert utils.passa_no_filtro(9000, 3) is False, "acima do teto do envelope"
+    assert utils.passa_no_filtro(5000, 3, area=80, cidade="Recife") is True
 
 
 def test_passa_no_filtro_campos_ausentes_nao_reprovam():
@@ -154,25 +162,30 @@ def test_passa_no_filtro_recife_aceita_2_quartos():
     assert utils.passa_no_filtro(2000, 2, area=60, cidade="Recife") is True
 
 
-def test_passa_no_filtro_recife_rejeita_1_quarto():
-    assert utils.passa_no_filtro(2000, 1, area=60, cidade="Recife") is False
+def test_coleta_aceita_1_quarto_a_preferencia_e_que_recorta():
+    """O piso de quartos saiu da coleta: quem quer 1 quarto agora consegue
+    ver, porque o anúncio está no banco. Antes não estava."""
+    assert utils.passa_no_filtro(2000, 1, area=60, cidade="Recife") is True
 
 
-def test_passa_no_filtro_recife_rejeita_area_abaixo_60():
-    assert utils.passa_no_filtro(2000, 3, area=59, cidade="Recife") is False
+def test_passa_no_filtro_recife_rejeita_area_abaixo_do_envelope():
+    assert utils.passa_no_filtro(2000, 3, area=25, cidade="Recife") is False
+    assert utils.passa_no_filtro(2000, 3, area=45, cidade="Recife") is True
 
 
-def test_passa_no_filtro_olinda_rejeita_2_quartos():
-    # Olinda exige 3+, diferente de Recife (2+)
-    assert utils.passa_no_filtro(2000, 2, area=70, cidade="Olinda") is False
+def test_coleta_de_olinda_nao_exige_mais_3_quartos():
+    """O perfil por cidade (Olinda 3+/70) era filtro de coleta e virou
+    preferência global no dashboard."""
+    assert utils.passa_no_filtro(2000, 2, area=70, cidade="Olinda") is True
 
 
 def test_passa_no_filtro_olinda_aceita_3_quartos_70m():
     assert utils.passa_no_filtro(2000, 3, area=70, cidade="Olinda") is True
 
 
-def test_passa_no_filtro_olinda_rejeita_area_abaixo_70():
-    assert utils.passa_no_filtro(2000, 3, area=65, cidade="Olinda") is False
+def test_passa_no_filtro_olinda_rejeita_area_abaixo_do_envelope():
+    assert utils.passa_no_filtro(2000, 3, area=25, cidade="Olinda") is False
+    assert utils.passa_no_filtro(2000, 3, area=65, cidade="Olinda") is True
 
 
 def test_passa_no_filtro_cidade_fora_do_escopo_reprova():
@@ -189,7 +202,8 @@ def test_passa_no_filtro_cidade_fora_do_escopo_reprova():
     assert utils.passa_no_filtro(2000, 3, area=90, cidade="Caruaru") is False
     # a região metropolitana entra, com o perfil de Recife
     assert utils.passa_no_filtro(2000, 2, area=60, cidade="Jaboatão dos Guararapes") is True
-    assert utils.passa_no_filtro(2000, 1, area=60, cidade="Paulista") is False
+    # 1 quarto entra na COLETA agora: quem recorta é a preferência, na tela
+    assert utils.passa_no_filtro(2000, 1, area=60, cidade="Paulista") is True
     assert utils.passa_no_filtro(2000, 2, area=60, cidade="Recife") is True
 
 
@@ -225,20 +239,21 @@ def test_avaliar_filtro_preco_sem_forma_e_indeterminado():
     assert "quartos e área ausentes" in motivos
 
 
-def test_avaliar_filtro_preco_fora_da_faixa_reprova():
-    veredito, _ = utils.avaliar_filtro(5000, 3, 80, "Recife")
+def test_avaliar_filtro_preco_fora_do_envelope_reprova():
+    veredito, _ = utils.avaliar_filtro(9000, 3, 80, "Recife")
     assert veredito == utils.REPROVADO
 
 
-def test_avaliar_filtro_olinda_2_quartos_reprova():
+def test_avaliar_filtro_olinda_2_quartos_agora_e_coletado():
+    """Era REPROVADO quando o perfil de Olinda (3+) valia na coleta."""
     veredito, _ = utils.avaliar_filtro(2000, 2, 80, "Olinda")
-    assert veredito == utils.REPROVADO
+    assert veredito == utils.APROVADO
 
 
 def test_passa_no_filtro_continua_compativel_com_indeterminado():
     # a função antiga segue devolvendo True para o que não foi reprovado
     assert utils.passa_no_filtro(None, None) is True
-    assert utils.passa_no_filtro(5000, 3) is False
+    assert utils.passa_no_filtro(9000, 3) is False
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,61 @@
 
 ---
 
+## Fase 10 — Filtros livres e preferência do usuário (05/09/2026)
+
+Pedido: escolher faixa de valor, bairros, cidade, quartos e área livremente, e
+salvar isso no navegador, "assim qualquer pessoa pode usar a solução".
+
+- [x] **O bloqueio era de coleta, não de interface.** A faixa 1.500–2.500 e o
+  mínimo de quartos estavam cravados na URL de busca de seis fontes. Nenhum
+  trabalho de front-end mostraria um apartamento de R$ 1.200: ele nunca tinha
+  sido coletado. Separadas as duas camadas — **envelope de coleta** (o que
+  existe) e **preferências** (o que se vê).
+
+- [x] **Envelope alargado para R$ 800–6.000, 1+ quarto, 30m²+.** Escolhido com
+  o usuário entre três larguras. *Custo aceito:* mais anúncios por rodada,
+  banco maior commitado 12x/dia, rodada mais longa. *A vigiar:* se o
+  repositório crescer demais, o próximo passo é parar de versionar o `.db` a
+  cada rodada.
+
+- [x] **Preferências salvas no navegador**, reusando a mecânica da triagem
+  (Fase 7). `noRecorte` saiu do JSON: quem decide o recorte agora é a tela.
+  *Descartado:* manter o recorte no Python e só "expor" controles — seria
+  duas fontes de verdade para a mesma pergunta, e a preferência continuaria
+  presa à próxima rodada.
+
+- [x] **Bairros vêm dos dados coletados, não de `BAIRROS_EXIBIDOS`.** A lista
+  do config virou semente. Sem isso, "qualquer pessoa pode usar" seria falso:
+  a pessoa só poderia escolher entre os bairros que eu já tinha escolhido.
+
+- [x] **Lista de bairros vazia significa "qualquer um"**, não "todos os de
+  hoje" — bairro novo entra sozinho em vez de ficar de fora por ter nascido
+  depois da escolha.
+
+- [~] **Perfil por cidade virou global.** Olinda exigia 3+/70 e Recife 2+/60.
+  Uma interface de perfil por cidade não se paga para uma diferença que quem
+  está olhando resolve em dois toques. Reversível se incomodar.
+
+- [ ] **CTI ainda coleta só 2+ quartos:** `2-quartos` está no CAMINHO da
+  busca, não em query string. Falta descobrir a rota de "todos os quartos".
+
+### Fase 2 (pendente): página de KPIs
+
+Levantamento feito em 05/09, para não refazer:
+
+- **Bairro mais caro/mais barato: viável agora.** 30 bairros na rodada, vários
+  com 5 a 11 anúncios.
+- **Valorização: dado insuficiente.** 14 mudanças de preço em 17 dias. E há
+  uma armadilha metodológica: a mediana de um bairro muda quando muda a
+  COMPOSIÇÃO dos anúncios, não só quando os preços mudam — um bairro que
+  ganhou dois apartamentos grandes "valoriza" sem nenhum preço ter subido. O
+  único sinal limpo é o mesmo anúncio mudando de preço.
+- **Mapa: 0 de 73 imóveis têm latitude/longitude.** Sem serviço externo (o
+  projeto não faz fetch em runtime), as opções são embutir centroides dos
+  bairros e desenhar bolhas, ou embutir o GeoJSON dos bairros (~150 KB).
+
+---
+
 ## Fase 9 — Recorte geográfico (05/09/2026)
 
 Relato: anúncios rotulados como Recife que, ao abrir, eram Garanhuns e

@@ -15,6 +15,47 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**05/09 (3):** filtros livres com preferência salva no navegador — fase 1 de
+dois pedidos (a página de KPIs fica para a fase 2).
+
+**O bloqueio não era de interface, era de coleta.** A faixa 1.500–2.500 e o
+mínimo de quartos estavam cravados na URL de busca de SEIS fontes
+(`?quartos=2&precoMinimo=1500&precoMaximo=2500`). Apartamento de R$ 1.200 ou
+de 1 quarto nunca entrava no banco — nenhum controle na tela faria aparecer o
+que não foi coletado.
+
+Separei as duas camadas que eram uma só:
+
+- **Envelope de coleta** (`config.FILTROS`): R$ 800–6.000, 1+ quarto, 30m²+.
+  Largo de propósito e mais caro de propósito — cada ponto de largura é
+  anúncio a mais por rodada, banco maior (commitado 12x/dia) e rodada mais
+  longa. É o preço de "escolha livre" ser verdade.
+- **Preferências** (`config.PREFERENCIAS_PADRAO` como semente, editáveis na
+  tela, salvas em `localStorage`): preço, quartos, área mín/máx, cidades e
+  bairros. `noRecorte` deixou de ir para o JSON — duas fontes de verdade para
+  a mesma pergunta era o defeito a evitar.
+
+Decisões de desenho que vale registrar:
+
+- **Bairros vêm dos DADOS, não do config.** Se viessem da minha lista,
+  ninguém conseguiria escolher um bairro que eu não tivesse escolhido antes.
+- **Lista de bairros vazia = "qualquer bairro serve"**, e não "todos os de
+  hoje". Bairro que aparecer amanhã entra sozinho.
+- **Campo ausente no imóvel não exclui.** "Não sei a área" não é "área
+  errada" — é a mesma regra de três estados do filtro de coleta.
+- **Simplificação assumida:** quartos e área viraram globais. Antes Olinda
+  exigia 3+/70 e Recife 2+/60; manter dois perfis pediria uma interface de
+  perfil por cidade para uma diferença que se resolve em dois toques.
+
+**Estreitamento conhecido:** a CTI tem `2-quartos` no CAMINHO da busca, não em
+query string. Trocar arrisca 404 e não foi verificado ao vivo, então aquela
+fonte segue coletando só 2+ quartos. Está anotado no config.
+
+Verificado em Chromium a 412px: painel abre, chips de cidade e bairro,
+preferência sobrevive à recarga, "restaurar padrão" volta ao config, sem
+rolagem horizontal. O ganho real de volume só aparece depois de uma rodada com
+o envelope novo.
+
 **05/09 (2):** relato "você tá colocando lugares como Recife e quando acesso é
 Garanhuns, Gravatá". Três causas, todas nossas:
 
@@ -288,7 +329,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 209 testes, ~4s.
+- 214 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada
