@@ -5,6 +5,12 @@ Robô que busca apartamentos para alugar em Recife e Olinda em ~20 sites
 locais), roda **2x por dia no GitHub Actions** e publica o resultado
 num **dashboard online** (GitHub Pages) — sem e-mail, é consulta direta.
 
+**Recorte geográfico:** Recife, Olinda e a Região Metropolitana (Jaboatão,
+Paulista, Camaragibe, Igarassu, Ipojuca, Cabo, Abreu e Lima, São Lourenço da
+Mata, Moreno). Quem manda é `FILTROS_POR_CIDADE`: ter perfil ali é o que
+autoriza a cidade a entrar. Cidade fora disso é rejeitada com motivo, e cidade
+não identificada fica indeterminada — nunca é completada com "Recife".
+
 **Filtros atuais** (`config.py`):
 - Preço: R$ 1.500 – 2.500
 - Recife: 2+ quartos, 60m²+
@@ -73,7 +79,7 @@ Na primeira execução (banco vazio) tudo aparece como "novo" — é esperado.
 
 | Fonte | Cidade | Tipo |
 |---|---|---|
-| OLX Imóveis | Recife/Olinda/Jaboatão (busca região inteira, cidade detectada por anúncio) | Playwright |
+| OLX Imóveis | busca muito além da RMR (chega a Caruaru/Garanhuns); cidade detectada por anúncio, fora do recorte é rejeitado | Playwright |
 | Viva Real / Viva Real Olinda | Recife / Olinda | Playwright |
 | Zap Imóveis / Zap Imóveis Olinda | Recife / Olinda | Playwright |
 | REMAX Recife / REMAX Olinda | Recife / Olinda | Playwright |

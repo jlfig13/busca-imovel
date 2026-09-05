@@ -175,10 +175,22 @@ def test_passa_no_filtro_olinda_rejeita_area_abaixo_70():
     assert utils.passa_no_filtro(2000, 3, area=65, cidade="Olinda") is False
 
 
-def test_passa_no_filtro_cidade_desconhecida_usa_perfil_padrao():
-    # cidade sem entrada em FILTROS_POR_CIDADE cai no perfil padrão
-    # (Recife: 2+ quartos, 60m²+), não reprova por engano nem trava
+def test_passa_no_filtro_cidade_fora_do_escopo_reprova():
+    """Trocado em 05/09/2026. Antes, cidade sem perfil caía no FILTRO_PADRAO
+    (o de Recife) e era APROVADA -- e a busca do OLX devolve muito além da
+    região metropolitana. Foi assim que anúncio de Caruaru entrou na lista.
+
+    O recorte é Recife, Olinda e a Região Metropolitana. Ter perfil em
+    FILTROS_POR_CIDADE é o que autoriza a cidade a entrar: sem perfil não há
+    como avaliar, e avaliar sem perfil era justamente o defeito."""
+    # o agreste e o sertão ficam de fora
+    assert utils.passa_no_filtro(2000, 3, area=90, cidade="Garanhuns") is False
+    assert utils.passa_no_filtro(2000, 3, area=90, cidade="Gravatá") is False
+    assert utils.passa_no_filtro(2000, 3, area=90, cidade="Caruaru") is False
+    # a região metropolitana entra, com o perfil de Recife
     assert utils.passa_no_filtro(2000, 2, area=60, cidade="Jaboatão dos Guararapes") is True
+    assert utils.passa_no_filtro(2000, 1, area=60, cidade="Paulista") is False
+    assert utils.passa_no_filtro(2000, 2, area=60, cidade="Recife") is True
 
 
 # ---------------------------------------------------------------------------
@@ -439,3 +451,18 @@ def test_piso_zero_nao_vai_para_a_url_de_busca():
     if not config.FILTROS["preco_min"]:
         assert "ps=" not in olx["url_listagem"]
     assert f"pe={config.FILTROS['preco_max']}" in olx["url_listagem"]
+
+
+def test_avaliar_filtro_cidade_fora_do_escopo_diz_o_motivo():
+    veredito, motivos = utils.avaliar_filtro(2000, 3, 90, "Gravatá")
+    assert veredito == utils.REPROVADO
+    assert "fora do escopo" in motivos[0]
+
+
+def test_avaliar_filtro_cidade_ausente_nao_vira_recife():
+    """Numa fonte que cobre várias cidades, aprovar sem saber onde fica é
+    afirmar o que não se sabe. Fica INDETERMINADO, que é candidato a
+    enriquecimento -- não lixo, nem aprovado."""
+    veredito, motivos = utils.avaliar_filtro(2000, 3, 90, None)
+    assert veredito == utils.INDETERMINADO
+    assert "cidade ausente" in motivos

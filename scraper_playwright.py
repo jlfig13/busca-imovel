@@ -207,7 +207,8 @@ def _coletar_rolando(page_obj, seletor_href: str, passo: int = 700,
     return [{"href": h, **dados} for h, dados in acumulado.items()]
 
 
-def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> dict | None:
+def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife",
+                multi_cidade: bool = False) -> dict | None:
     texto = card.get("text", "")
     url = card.get("href", "")
 
@@ -218,16 +219,28 @@ def _parse_card(card: dict, site_nome: str, cidade_padrao: str = "Recife") -> di
     if not utils.titulo_aceito(titulo):
         return None
 
-    # cidade_padrao vem do site em config.SITES (cada portal aqui já é uma
-    # busca de cidade única, exceto OLX: busca a região metropolitana
-    # inteira, então o padrão "Cidade, Bairro" abaixo detecta a cidade
-    # real por item em vez de usar o padrão do site.
+    # cidade_padrao vem do site em config.SITES e SÓ vale para busca de uma
+    # cidade só. O OLX é multi_cidade: a busca dele devolve muito além da
+    # região metropolitana, e completar com o padrão fazia anúncio de Caruaru
+    # ou Garanhuns entrar rotulado como Recife -- e passar no filtro, porque
+    # cidade sem perfil caía no perfil de Recife.
     # Endereço estruturado do card. No Imovelweb ele vem como
     # "Av. Min. Marcos Freire\nCasa Caiada, Olinda" -- era a fonte dos
     # imóveis sem bairro que sobravam, e ainda entrega o logradouro.
     logradouro, bairro_txt, cidade_txt = utils.endereco_do_texto(texto)
 
-    cidade = cidade_txt or utils.cidade_do_slug(url) or cidade_padrao
+    # Cidade fora da região vem primeiro: é o sinal mais forte e o que evita
+    # rotular anúncio do agreste como capital. Reconhecer aqui é o que deixa o
+    # filtro rejeitar com motivo ("cidade fora do escopo: Garanhuns") em vez de
+    # aprovar como Recife.
+    cidade = (utils.cidade_de_fora(texto) or utils.cidade_de_fora(url)
+              or cidade_txt or utils.cidade_do_slug(url))
+
+    # O padrão do site só vale quando a busca É de uma cidade só. Numa fonte
+    # multi-cidade (OLX cobre muito além da região metropolitana), completar
+    # com "Recife" é inventar: fica None e o filtro trata como indeterminado.
+    if cidade is None and not multi_cidade:
+        cidade = cidade_padrao
 
     # Bairro: texto estruturado, depois slug da URL (ambos validados contra
     # a lista canônica), e só então os padrões por portal. Ver P-18: regex
@@ -570,7 +583,8 @@ def scrape(site: dict) -> list[dict]:
                         continue
                     vistos.add(href)
                     novos += 1
-                    item = _parse_card(c, site["nome"], cidade_padrao)
+                    item = _parse_card(c, site["nome"], cidade_padrao,
+                                       site.get("multi_cidade", False))
                     if not item:
                         resultados.stats["reprovados"] += 1
                         continue

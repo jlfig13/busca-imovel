@@ -22,12 +22,44 @@ FILTROS = {
 # (imóvel menor lá compensa menos que em Recife). Cidade de um imóvel vem
 # do campo "cidade" do site em config.SITES, ou detectada no próprio card
 # (ex: OLX busca a região metropolitana inteira e mistura Recife/Olinda/
-# Jaboatão num resultado só). Cidade sem entrada aqui cai no perfil padrão.
+# Jaboatão num resultado só).
+#
+# Estar aqui é o que AUTORIZA a cidade a entrar no catálogo: quem manda no
+# recorte geográfico é este dicionário (ver CIDADES_MONITORADAS abaixo).
+# Antes de 05/09/2026 não havia recorte nenhum, e cidade sem entrada caía no
+# perfil de Recife -- foi assim que anúncio de Caruaru entrou na lista.
 FILTROS_POR_CIDADE = {
     "Recife": {"quartos_min": 2, "area_min": 60},
     "Olinda": {"quartos_min": 3, "area_min": 70},
 }
+
+# Demais cidades da Região Metropolitana do Recife. Entram com o perfil de
+# Recife como ponto de partida -- não há motivo medido para exigir diferente
+# delas, e um perfil frouxo demais aparece no dashboard, onde dá para julgar.
+# Ficam FORA do recorte de bairros (BAIRROS_EXIBIDOS não tem entrada para
+# elas), então caem em "Outros bairros" em vez de disputar a lista do dia.
+for _cidade_rmr in (
+    "Jaboatão dos Guararapes", "Paulista", "Camaragibe", "Igarassu",
+    "Ipojuca", "Cabo de Santo Agostinho", "Abreu e Lima",
+    "São Lourenço da Mata", "Moreno",
+):
+    FILTROS_POR_CIDADE.setdefault(_cidade_rmr, dict(FILTROS_POR_CIDADE["Recife"]))
+del _cidade_rmr
+
 FILTRO_PADRAO = FILTROS_POR_CIDADE["Recife"]
+
+# Cidades que o projeto monitora. Derivado de FILTROS_POR_CIDADE de propósito:
+# cidade sem perfil declarado não tem como ser avaliada, então não pode entrar.
+#
+# Existe porque o filtro não tinha recorte geográfico nenhum: a busca do OLX
+# devolve muito além da região metropolitana (Caruaru, Garanhuns, Gravatá
+# apareceram), e qualquer cidade caía no FILTRO_PADRAO e podia ser aprovada.
+# Anúncio de Garanhuns num monitor de Recife não é ruído: é resposta errada.
+#
+# O recorte hoje é Recife, Olinda e a Região Metropolitana. Para incluir outra
+# cidade, basta dar a ela um perfil em FILTROS_POR_CIDADE: os dois andam
+# juntos de propósito, porque avaliar sem perfil é o que causava o problema.
+CIDADES_MONITORADAS = tuple(FILTROS_POR_CIDADE)
 
 # ---------------------------------------------------------------------------
 # BAIRROS EXIBIDOS
@@ -564,6 +596,11 @@ SITES = [
             "(nível de 103 chars), enquanto o bairro só aparece no pai "
             "(SECTION de 185 chars) -- daí todo anúncio vir sem bairro."
         ),
+        # A busca cobre MUITO além da região metropolitana (Caruaru,
+        # Garanhuns e Gravatá apareceram). Por isso multi_cidade: sem ela, o
+        # anúncio cuja cidade não foi detectada era completado com "Recife" --
+        # inventar cidade é pior que não saber, porque passa no filtro.
+        "multi_cidade": True,
         # NÃO adicione uma segunda entrada OLX para Olinda: tentado em
         # 05/09/2026 e revertido no mesmo dia. A cidade no caminho da URL
         # (.../recife-e-regiao/olinda) é ignorada pela busca -- as duas

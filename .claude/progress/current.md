@@ -15,6 +15,32 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**05/09 (2):** relato "você tá colocando lugares como Recife e quando acesso é
+Garanhuns, Gravatá". Três causas, todas nossas:
+
+1. **`grande-recife` está em TODA URL do OLX** -- é o nome da região no
+   caminho. `cidade_do_slug` casava com "recife" e devolvia "Recife" para o
+   catálogo inteiro do portal, inclusive Caruaru. Era o mecanismo principal.
+2. **A cidade era inventada.** Sem detecção, `_parse_card` completava com
+   `cidade_padrao`. Agora só fontes de cidade única usam o padrão; o OLX é
+   `multi_cidade: True` e fica com cidade vazia, que o filtro trata como
+   INDETERMINADO.
+3. **O filtro não tinha recorte geográfico.** `avaliar_filtro` nunca olhava a
+   cidade: qualquer uma caía no `FILTRO_PADRAO` (que é o de Recife) e podia
+   ser APROVADA. Garanhuns passaria mesmo se fosse detectada certo.
+
+Junto, `utils.CIDADES_FORA_DA_REGIAO` reconhece 19 cidades do agreste/sertão/
+zona da mata. Elas não estão lá para serem monitoradas: estão para serem
+RECONHECIDAS, porque reconhecer é o que permite rejeitar com motivo
+("cidade fora do escopo: Garanhuns") em vez de rotular errado.
+
+**Recorte definido com o usuário:** Recife, Olinda e a Região Metropolitana
+(9 cidades a mais, com o perfil de Recife). Medido sobre a última rodada: sai
+1 anúncio de 105 -- a RMR fica preservada, e o que sai é do agreste, que antes
+entrava disfarçado de Recife. Ter perfil em `FILTROS_POR_CIDADE` é o que
+autoriza a cidade: os dois andam juntos porque avaliar sem perfil era o
+defeito.
+
 **05/09:** relato de imóveis faltando (8 URLs, 7 delas nunca vistas). A causa
 era grande e estava calada.
 
@@ -262,7 +288,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 201 testes, ~4s.
+- 209 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

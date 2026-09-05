@@ -2,6 +2,41 @@
 
 ---
 
+## Fase 9 — Recorte geográfico (05/09/2026)
+
+Relato: anúncios rotulados como Recife que, ao abrir, eram Garanhuns e
+Gravatá. Três causas independentes, todas nossas.
+
+- [x] **`grande-recife` está em toda URL do OLX.** É o nome da REGIÃO no
+  caminho, e `cidade_do_slug` casava com "recife" -- devolvendo "Recife" para
+  o catálogo inteiro do portal, Caruaru incluído. Era o mecanismo principal, e
+  é o tipo de defeito que só aparece quando alguém clica no anúncio.
+
+- [x] **A cidade era inventada quando a detecção falhava.** `_parse_card`
+  completava com `cidade_padrao`. Agora só fonte de cidade única usa o padrão;
+  o OLX é `multi_cidade: True` e fica com cidade vazia -- que o filtro trata
+  como INDETERMINADO. *Princípio:* completar com o valor mais provável é pior
+  que não saber, porque o palpite passa no filtro e o desconhecido não.
+
+- [x] **O filtro não tinha recorte geográfico.** `avaliar_filtro` recebia
+  `cidade` e só a usava para escolher o perfil: cidade sem perfil caía no de
+  Recife e podia ser APROVADA. Agora cidade fora de `CIDADES_MONITORADAS` é
+  REPROVADA com motivo.
+
+- [x] **`CIDADES_FORA_DA_REGIAO`**: 19 cidades do agreste, sertão e zona da
+  mata. Não estão lá para serem monitoradas -- estão para serem RECONHECIDAS.
+  Reconhecer é o que permite rejeitar com motivo em vez de rotular errado.
+
+- [x] **Recorte decidido com o usuário: Recife, Olinda e a RMR.** As 9 cidades
+  da região entram com o perfil de Recife (2+ quartos, 60m²+) e ficam fora de
+  `BAIRROS_EXIBIDOS`, então caem em "Outros bairros" em vez de disputar a
+  lista do dia. Medido sobre a rodada #53: sai 1 anúncio de 105.
+  *Descartado:* recorte estrito Recife+Olinda, que era o que o README dizia --
+  tiraria 17 anúncios de cidades vizinhas legítimas para resolver um problema
+  que era do agreste.
+
+---
+
 ## Fase 8 — Cobertura: paginação, OLX Olinda, cadência (05/09/2026)
 
 - [x] **Todas as fontes de Playwright traziam só a primeira página.** O laço
