@@ -2,6 +2,27 @@
 
 ---
 
+## Fase 14 — Custo no detalhe vira padrão (06/09/2026)
+
+- [x] **O preço errado não era de uma fonte, era o padrão.** Relatado no
+  Portal CRECI (R$ 2.500 na tela; R$ 2.500 + 1.200 de condomínio + 191 de
+  IPTU = R$ 3.891 no anúncio), depois de já ter sido relatado na Cristina
+  Mirele. Das sete fontes `cards_inline`, seis mostravam só o aluguel.
+  `cards_inline` passa a visitar o detalhe POR PADRÃO; quem traz o custo
+  total no card desliga com `"custo_no_detalhe": False`.
+  *Descartado:* ligar fonte a fonte conforme o erro aparece. Cada relato
+  custa uma rodada de ida e volta, e o defeito é o mesmo em todas.
+
+- [x] **A cobertura acumula.** `enriquecer` desconta URLs cuja taxa já foi
+  lida (`db.urls_com_taxa_conhecida`) e visita o mais barato primeiro. Sem o
+  desconto, o teto de visitas era gasto todo dia nos mesmos anúncios — medido
+  no Chaves na Mão: 13 de 81, rodada após rodada.
+
+- [x] **Fotos confirmadas de volta** pelo usuário, na tela. Era o `Referer`
+  bloqueado pelos CDNs dos portais; `no-referrer` resolveu.
+
+---
+
 ## Fase 13 — Design system e marca (05/09/2026)
 
 - [x] **Paleta trocada por decisão de produto.** Azul #0EA5E9 (ação e

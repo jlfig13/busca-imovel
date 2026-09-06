@@ -130,7 +130,17 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
     # justamente o veredito que muda. Sem isto, fonte de card incompleto
     # entrava com o número da vitrine -- foi o caso relatado da Cristina
     # Mirele, R$ 1.500 na lista e R$ 3.000 ao abrir.
-    if site.get("custo_no_detalhe"):
+    # Padrão LIGADO. A exceção era a regra: das sete fontes cards_inline, seis
+    # mostravam só o aluguel no card, e o número na tela estava errado em
+    # todas -- relatado na Cristina Mirele (1.500 na lista, 3.000 ao abrir) e
+    # no Portal CRECI (2.500 na tela, 2.500 + 1.200 de condomínio + 191 de
+    # IPTU = 3.891 no anúncio). Corrigir uma por vez é enxugar gelo.
+    #
+    # O custo é contido: `_vale_visitar` pula quem já tem custo completo,
+    # `db.urls_com_taxa_conhecida` pula quem já teve a taxa lida antes, e
+    # MAX_VISITAS limita por rodada. Fonte cujo card já traz o custo total
+    # desliga com "custo_no_detalhe": False.
+    if site.get("custo_no_detalhe", True):
         detalhe_custo.enriquecer(candidatos)
 
     for item in candidatos:

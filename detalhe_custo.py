@@ -18,6 +18,7 @@ config.SITES) e ainda assim só visita o que pode mudar de veredito -- ver
 `_vale_visitar`.
 """
 import config
+import db
 import utils
 from utils import log
 
@@ -61,10 +62,24 @@ def enriquecer(itens: list[dict], buscar=None, max_visitas: int = MAX_VISITAS) -
     corrigidos = 0
     visitas = 0
 
-    for item in itens:
+    # Taxa já lida numa rodada anterior não precisa de nova requisição: o
+    # custo é grudento no banco (db._consolidar_custo). Sem este desconto, o
+    # teto de visitas seria gasto todo dia nos mesmos anúncios e a cobertura
+    # nunca avançaria -- foi o defeito medido no Chaves na Mão, 13 de 81
+    # rodada após rodada. Com ele, a cobertura ACUMULA: cada rodada gasta as
+    # visitas em quem ainda não tem taxa.
+    conhecidos = db.urls_com_taxa_conhecida(
+        [i["url"] for i in itens if i.get("url")])
+
+    # Mais barato primeiro: o teto não cobre a lista inteira, e o anúncio
+    # barato cabe em mais orçamentos -- é onde a taxa escondida muda mais
+    # decisão. Cópia rasa: a ordem de `itens` pertence a quem chamou.
+    for item in sorted(itens, key=lambda i: i.get("preco") or 1e9):
         if visitas >= max_visitas:
             break
         if not _vale_visitar(item) or not item.get("url"):
+            continue
+        if item["url"] in conhecidos:
             continue
 
         visitas += 1
