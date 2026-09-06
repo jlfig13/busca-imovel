@@ -134,7 +134,21 @@ def _anel_do_elemento(el: dict) -> list[list[float]] | None:
 
 
 def buscar(cidade: str, bairro: str, abrir=None) -> list[list[float]] | None:
-    """Busca o polígono de um bairro. Devolve anel [[lon,lat], ...] ou None.
+    """Compatibilidade: só o anel, descartando o diagnóstico."""
+    anel, _ = buscar_diag(cidade, bairro, abrir=abrir)
+    return anel
+
+
+def buscar_diag(cidade: str, bairro: str,
+                abrir=None) -> tuple[list[list[float]] | None, bool]:
+    """Devolve (anel, consulta_respondeu).
+
+    A segunda metade existe porque o cache grava AUSÊNCIA para não reperguntar
+    todo dia -- e sem ela, um Overpass fora do ar por cinco minutos gravaria
+    "este bairro não existe" para sempre, apagando o mapa em definitivo sem
+    nenhum erro visível. É o mesmo princípio que o projeto já aplica às
+    fontes: ausência só conta se quem responde estava saudável. Não achar não
+    é a mesma coisa que não olhar.
 
     `abrir` existe para o teste injetar a resposta sem rede."""
     corpo = urllib.parse.urlencode({"data": _consulta(cidade, bairro)}).encode()
@@ -150,7 +164,7 @@ def buscar(cidade: str, bairro: str, abrir=None) -> list[list[float]] | None:
         dados = json.loads(bruto)
     except Exception as e:
         log.warning(f"[geo] {cidade}/{bairro}: {str(e)[:120]}")
-        return None
+        return None, False
 
     melhor = None
     for el in dados.get("elements", []):
@@ -159,7 +173,7 @@ def buscar(cidade: str, bairro: str, abrir=None) -> list[list[float]] | None:
             continue
         if melhor is None or len(anel) > len(melhor):
             melhor = anel
-    return melhor
+    return melhor, True
 
 
 def simplificar(anel: list[list[float]], tol: float = 0.0004) -> list[list[float]]:
@@ -216,21 +230,30 @@ def atualizar(pares: list[tuple[str, str]], abrir=None, teto: int = 25) -> dict:
         return cache
 
     buscados = 0
+    falhas = 0
     for cidade, bairro in faltam[:teto]:
-        anel = buscar(cidade, bairro, abrir=abrir)
-        # Grava a AUSÊNCIA também: bairro que o OSM não tem não pode ser
-        # perguntado de novo a cada rodada.
+        anel, respondeu = buscar_diag(cidade, bairro, abrir=abrir)
+        buscados += 1
+        if abrir is None:
+            time.sleep(PAUSA_S)
+        if not respondeu:
+            # Consulta que não respondeu não vira veredito: gravar ausência
+            # aqui apagaria o bairro do mapa para sempre por causa de um
+            # Overpass fora do ar. Fica de fora do cache e volta na próxima.
+            falhas += 1
+            continue
+        # Ausência CONFIRMADA, essa sim, é gravada: bairro que o OSM não tem
+        # não pode ser perguntado de novo a cada rodada.
         cache[chave(cidade, bairro)] = (
             {"anel": simplificar(anel), "centro": centroide(anel)} if anel
             else {"anel": None, "centro": None}
         )
-        buscados += 1
-        if abrir is None:
-            time.sleep(PAUSA_S)
 
     achados = sum(1 for c, b in faltam[:teto]
-                  if cache[chave(c, b)].get("anel"))
+                  if cache.get(chave(c, b), {}).get("anel"))
+    restam = max(0, len(faltam) - teto) + falhas
     log.info(f"[geo] {buscados} bairro(s) consultado(s), {achados} com "
-             f"polígono; faltam {max(0, len(faltam) - teto)} para a próxima")
+             f"polígono" + (f", {falhas} sem resposta" if falhas else "") +
+             f"; faltam {restam} para a próxima")
     salvar(cache)
     return cache

@@ -118,3 +118,35 @@ def test_cache_quebrado_nao_derruba(monkeypatch, tmp_path):
     p.write_text("{isto não é json", encoding="utf-8")
     monkeypatch.setattr(geo, "CAMINHO", str(p))
     assert geo.carregar() == {}
+
+
+# --- falha de rede não vira veredito -----------------------------------
+# O cache grava AUSÊNCIA para não reperguntar todo dia. Sem separar "o OSM não
+# tem" de "não consegui perguntar", um Overpass fora do ar por cinco minutos
+# gravaria "este bairro não existe" para sempre e apagaria o mapa em
+# definitivo, sem erro visível. É o mesmo princípio que o projeto já aplica às
+# fontes: ausência só conta se quem responde estava saudável.
+
+def _explode(_corpo):
+    raise OSError("Overpass fora do ar")
+
+
+def test_falha_de_rede_nao_grava_ausencia(tmp_path, monkeypatch):
+    monkeypatch.setattr(geo, "CAMINHO", str(tmp_path / "b.json"))
+    cache = geo.atualizar([("Recife", "Pina")], abrir=_explode)
+    assert cache == {}, "falha de rede não pode virar 'bairro não existe'"
+
+
+def test_falha_de_rede_deixa_o_bairro_para_a_proxima(tmp_path, monkeypatch):
+    monkeypatch.setattr(geo, "CAMINHO", str(tmp_path / "b.json"))
+    geo.atualizar([("Recife", "Pina")], abrir=_explode)
+    cache = geo.atualizar([("Recife", "Pina")], abrir=lambda c: '{"elements": []}')
+    assert geo.chave("Recife", "Pina") in cache
+
+
+def test_ausencia_confirmada_e_gravada(tmp_path, monkeypatch):
+    """O outro lado: bairro que o OSM realmente não tem NÃO pode ser
+    perguntado de novo a cada rodada."""
+    monkeypatch.setattr(geo, "CAMINHO", str(tmp_path / "b.json"))
+    cache = geo.atualizar([("Recife", "Pina")], abrir=lambda c: '{"elements": []}')
+    assert cache[geo.chave("Recife", "Pina")]["anel"] is None
