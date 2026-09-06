@@ -493,30 +493,42 @@ a{color:inherit;}
 .btn-backup:hover{border-color:var(--linha-forte); color:var(--tinta);}
 .backup-nota{font-size:12px; color:var(--tinta-suave);}
 
-/* ---------- painel de preferências ---------- */
-/* O recorte deixou de ser decisão do config e virou decisão de quem olha.
-   Fica num painel próprio, separado dos Filtros: filtro é o recorte do
-   momento, preferência é o que define "minha lista" e sobrevive à rodada. */
-.prefs[hidden]{display:none;}
-.prefs{
-  display:flex; flex-direction:column; gap:12px; padding:14px 0 4px;
+/* ---------- cidade e bairro: seleção múltipla ----------
+   Um painel de "Preferências" separado guardava a seleção múltipla e
+   recortava o catálogo por fora da barra de filtros -- a tela dizia "8
+   imóveis" com 388 no catálogo e ninguém via, olhando os Filtros, de onde
+   vinha o corte. Relato: "o filtro da preferência tem q ser igual a esse, não
+   um pré filtrado". O painel morreu; a seleção múltipla desceu para cá.
+
+   Botão que abre uma gaveta de chips, e não um <select multiple>: no Android
+   o multiple vira uma lista de rolagem minúscula, e no iOS um seletor de
+   roda em que marcar três bairros é quase impossível. Chip é alvo de toque
+   de 28px que mostra o que está ligado sem precisar abrir nada. */
+.campo-multi{position:relative; display:flex; flex-direction:column; gap:6px;}
+.btn-multi{
+  height:38px; padding:0 10px; display:flex; align-items:center; gap:6px;
+  border:1px solid var(--linha); border-radius:var(--r);
+  background:var(--superficie); color:var(--tinta); cursor:pointer;
+  font:inherit; font-size:14px; white-space:nowrap;
 }
-.prefs-nota{
-  margin:0; font-size:12.5px; line-height:1.5; color:var(--tinta-suave);
-}
-.prefs-linha{display:flex; gap:8px; flex-wrap:wrap;}
-.prefs-grupo{display:flex; flex-direction:column; gap:6px;}
-.prefs-rot{
-  font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
-  text-transform:uppercase; color:var(--tinta-fraca);
-  display:flex; align-items:center; gap:6px;
-}
+.btn-multi svg{width:16px; height:16px; stroke:currentColor; fill:none;
+  stroke-width:1.6; opacity:.65;}
+.btn-multi .seta{margin-left:auto; display:flex; transition:transform .15s ease;}
+.btn-multi[aria-expanded="true"]{border-color:var(--linha-forte);}
+.btn-multi[aria-expanded="true"] .seta{transform:rotate(90deg);}
+.chips-multi[hidden]{display:none;}
 /* Altura limitada com rolagem PRÓPRIA: trinta bairros empurrariam a lista de
-   imóveis para fora da tela toda vez que o painel abrisse. */
-.prefs-chips{
+   imóveis para fora da tela toda vez que a gaveta abrisse. */
+.chips-multi{
   display:flex; flex-wrap:wrap; gap:5px;
-  max-height:132px; overflow-y:auto;
+  max-height:132px; overflow-y:auto; padding:2px;
 }
+.filtros-rodape{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  width:100%; padding-top:10px; margin-top:2px;
+  border-top:1px solid var(--linha);
+}
+.prefs-conta{font-size:12px; color:var(--tinta-suave);}
 .chip-pref{
   height:28px; padding:0 10px; border-radius:14px; cursor:pointer;
   border:1px solid var(--linha); background:var(--superficie);
@@ -531,14 +543,21 @@ a{color:inherit;}
   :root:not([data-tema="escuro"]) .chip-pref[aria-pressed="true"]{color:#fff;}
 }
 .btn-mini{
-  height:24px; padding:0 8px; border-radius:6px; cursor:pointer;
+  height:26px; padding:0 8px; border-radius:6px; cursor:pointer;
   border:1px solid var(--linha); background:var(--superficie);
   color:var(--tinta-media); font-family:var(--sans); font-size:11.5px;
   text-transform:none; letter-spacing:0;
+  display:inline-flex; align-items:center; gap:5px;
+}
+/* Sem esta regra o SVG assume o tamanho do viewBox e vaza por cima da lista:
+   o botão fica visualmente vazio e uma estrela gigante cobre o conteúdo
+   abaixo. Aconteceu no primeiro .btn-mini que ganhou ícone. */
+.btn-mini svg{
+  width:13px; height:13px; flex:none;
+  stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round;
 }
 .btn-mini:hover{border-color:var(--linha-forte); color:var(--tinta);}
-.prefs-rodape{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
-.prefs-conta{font-size:12px; color:var(--tinta-suave);}
 
 /* ---------- barra de filtros ---------- */
 .barra-filtros{

@@ -341,10 +341,11 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
         if ocultos.get("sem_bairro"):
             partes.append(f"{ocultos['sem_bairro']} sem bairro informado")
         linha_ocultos = (
-            "<div><dt>Coletados e não exibidos</dt><dd>"
-            f"{' · '.join(partes)}. A coleta cobre a cidade inteira; a lista "
-            "de bairros acima é só o recorte da exibição — o botão "
-            "<b>Outros bairros</b>, no topo, mostra o que ficou de fora.</dd></div>"
+            "<div><dt>Fora dos bairros sugeridos</dt><dd>"
+            f"{' · '.join(partes)}. A coleta cobre a cidade inteira e o "
+            "arquivo carrega tudo: a lista de bairros acima é só a sugestão "
+            "que já vem marcada em <b>Filtros → Bairro</b>. Desmarque para ver "
+            "o resto, ou use <b>Limpar</b>.</dd></div>"
         )
 
     html_final = f"""<!DOCTYPE html>
@@ -417,10 +418,8 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
   <p class="pulso-sec" id="pulso-sec"></p>
 
   <div class="escopo" role="group" aria-label="Recorte da lista">
-    <button class="chip-escopo" id="e-meus" type="button" aria-pressed="true">
-      Minhas preferências <span class="chip-n" id="n-meus"></span></button>
-    <button class="chip-escopo" id="e-outros" type="button" aria-pressed="false">
-      Fora delas <span class="chip-n" id="n-outros"></span></button>
+    <button class="chip-escopo" id="e-todos" type="button" aria-pressed="true">
+      {ic['casa']} Todos <span class="chip-n" id="n-todos"></span></button>
     <button class="chip-escopo" id="e-favoritos" type="button" aria-pressed="false">
       {ic['estrela']} Favoritos <span class="chip-n" id="n-favoritos"></span></button>
     <button class="chip-escopo" id="e-lixeira" type="button" aria-pressed="false">
@@ -442,61 +441,12 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     <span class="backup-nota" id="backup-nota"></span>
   </div>
 
-  <div class="prefs" id="prefs" hidden>
-    <p class="prefs-nota">Vale para "Minhas preferências". Fica salvo neste
-      navegador — o resto continua visível em "Fora das preferências".</p>
-
-    <div class="prefs-linha">
-      <label class="campo preco">{ic['moeda']}
-        <input id="p-preco-min" type="number" inputmode="numeric" placeholder="mín"
-               aria-label="Preço mínimo preferido">
-        <span class="sep">–</span>
-        <input id="p-preco-max" type="number" inputmode="numeric" placeholder="máx"
-               aria-label="Preço máximo preferido">
-      </label>
-      <label class="campo">
-        <select id="p-quartos" aria-label="Quartos mínimos">
-          <option value="0">Quartos: qualquer</option><option value="1">1+</option>
-          <option value="2">2+</option><option value="3">3+</option>
-          <option value="4">4+</option>
-        </select>
-      </label>
-      <label class="campo preco">
-        <input id="p-area-min" type="number" inputmode="numeric" placeholder="m² mín"
-               aria-label="Área mínima">
-        <span class="sep">–</span>
-        <input id="p-area-max" type="number" inputmode="numeric" placeholder="m² máx"
-               aria-label="Área máxima">
-      </label>
-    </div>
-
-    <div class="prefs-grupo">
-      <span class="prefs-rot">Cidades</span>
-      <div class="prefs-chips" id="p-cidades"></div>
-    </div>
-    <div class="prefs-grupo">
-      <span class="prefs-rot">Bairros <button class="btn-mini" id="p-bairros-todos"
-        type="button">qualquer um</button><button class="btn-mini" id="p-bairros-nenhum"
-        type="button">os do padrão</button></span>
-      <div class="prefs-chips" id="p-bairros"></div>
-    </div>
-
-    <div class="prefs-rodape">
-      <button class="btn-mini" id="p-restaurar" type="button">Restaurar padrão</button>
-      <span class="prefs-conta" id="p-conta"></span>
-    </div>
-  </div>
-
   <div class="barra-filtros" id="barra-filtros">
     <button class="btn-filtros" id="btn-filtros" type="button"
             aria-expanded="false" aria-controls="filtros">
       {ic['filtro']} Filtros
       <span class="filtros-n" id="filtros-n" hidden></span>
       <span class="seta">{ic['seta']}</span>
-    </button>
-    <button class="btn-filtros" id="btn-prefs" type="button"
-            aria-expanded="false" aria-controls="prefs">
-      {ic['estrela']} Preferências
     </button>
     <span class="contagem" id="contagem"></span>
   </div>
@@ -511,12 +461,28 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     <button class="chip" id="c-multi" type="button" aria-pressed="false">
       Confirmados <span class="chip-n" id="cn-multi"></span></button>
 
-    <label class="campo">{ic['local']}
-      <select id="f-cidade" aria-label="Cidade"><option value="">Cidade: todas</option></select>
-    </label>
-    <label class="campo">
-      <select id="f-bairro" aria-label="Bairro"><option value="">Bairro: todos</option></select>
-    </label>
+    <!-- Cidade e bairro aceitam VÁRIOS. Era um <select> de escolha única, e
+         a seleção múltipla morava num painel "Preferências" separado, que
+         recortava o catálogo em dois baldes ("Minhas preferências" / "Fora
+         delas"). Relato: "o filtro da preferência tem q ser igual a esse, não
+         um pré filtrado". Agora é um filtro só, e ele sabe fazer as duas
+         coisas. -->
+    <div class="campo-multi">
+      <button class="btn-multi" id="btn-cidades" type="button"
+              aria-expanded="false" aria-controls="lista-cidades">
+        {ic['local']}<span id="rot-cidades">Cidade: todas</span>
+        <span class="seta">{ic['seta']}</span>
+      </button>
+      <div class="chips-multi" id="lista-cidades" hidden></div>
+    </div>
+    <div class="campo-multi">
+      <button class="btn-multi" id="btn-bairros" type="button"
+              aria-expanded="false" aria-controls="lista-bairros">
+        <span id="rot-bairros">Bairro: todos</span>
+        <span class="seta">{ic['seta']}</span>
+      </button>
+      <div class="chips-multi" id="lista-bairros" hidden></div>
+    </div>
     <label class="campo">{ic['filtro']}
       <select id="f-quartos" aria-label="Quartos mínimos">
         <option value="0">Quartos</option><option value="1">1+</option>
@@ -527,6 +493,15 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
       <input id="f-min" type="number" inputmode="numeric" placeholder="mín" aria-label="Preço mínimo">
       <span class="sep">–</span>
       <input id="f-max" type="number" inputmode="numeric" placeholder="máx" aria-label="Preço máximo">
+    </label>
+    <!-- Área estava só no painel de preferências. Sumir com o painel não pode
+         custar a funcionalidade: ela desce para cá. -->
+    <label class="campo preco">
+      <input id="f-area-min" type="number" inputmode="numeric" placeholder="m² mín"
+             aria-label="Área mínima">
+      <span class="sep">–</span>
+      <input id="f-area-max" type="number" inputmode="numeric" placeholder="m² máx"
+             aria-label="Área máxima">
     </label>
     <label class="campo busca">{ic['busca']}
       <input id="f-busca" type="search" placeholder="bairro, rua, fonte…" aria-label="Busca livre">
@@ -541,6 +516,18 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
       </select>
     </label>
     <button class="btn-limpar" id="btn-limpar" type="button">Limpar</button>
+
+    <!-- "Preferência" deixou de ser um recorte paralelo e virou o que sempre
+         devia ter sido: este filtro, guardado. Salva no navegador e volta
+         aplicado na próxima abertura, nos MESMOS campos acima -- visíveis e
+         editáveis, com "Limpar" mostrando tudo. -->
+    <div class="filtros-rodape">
+      <button class="btn-mini" id="btn-salvar-pref" type="button">
+        {ic['estrela']} Salvar como meu padrão</button>
+      <button class="btn-mini" id="btn-usar-pref" type="button">Usar meu padrão</button>
+      <button class="btn-mini" id="btn-pref-padrao" type="button">Restaurar sugerido</button>
+      <span class="prefs-conta" id="pref-nota"></span>
+    </div>
   </div>
 
   <nav class="abas" role="tablist">
@@ -639,18 +626,21 @@ function faixa(hist){{
     <circle cx="${{W}}" cy="${{y(p[n-1])}}" r="1.8" fill="${{cor}}"/></svg>`;
 }}
 
-/* ---------- recorte de bairros ----------
-   Os dois lados são EXCLUSIVOS: "Minhas preferências" mostra o que está no
-   filtro de bairros e "Outros bairros" mostra o complemento -- o que ficou
-   de fora, e só isso. Um botão "todos" (preferências + resto) obrigaria a
-   procurar os conhecidos no meio da lista inteira para descobrir o que há
-   de novo fora dela, que é justamente a pergunta que ele deveria responder.
+/* ---------- recorte ----------
+   Já foram dois recortes concorrentes: uma barra de filtros e, por fora dela,
+   um par de botões "Minhas preferências" / "Fora delas" que dividia o
+   catálogo em dois baldes exclusivos. A tela dizia "8 imóveis" com 388 no
+   catálogo, e a barra de filtros não tinha nada que explicasse a diferença.
+   Relato: "o filtro da preferência tem q ser igual a esse, não um pré
+   filtrado".
+
+   Agora é um recorte só, e ele está inteiro na barra de filtros. Sobrou aqui
+   o que é recorte de LISTA e não de busca: tudo, favoritos, lixeira.
 
    O recorte é do usuário, não do robô: a coleta cobre a cidade inteira e o
-   arquivo carrega tudo, então trocar de lado é instantâneo. O selo de
-   sugestão não muda -- continua só nos bairros preferidos. */
+   arquivo carrega tudo, então mudar de ideia é instantâneo. */
 const el = id => document.getElementById(id);
-let escopo = 'meus';
+let escopo = 'todos';
 
 /* ---------- triagem: favoritos e descartados ----------
    A chave é a URL do ANÚNCIO, não o id do imóvel. db.consolidar_imoveis()
@@ -747,73 +737,99 @@ function gravarPrefs(){{
   gravarLista('preferencias', PREFS);
 }}
 
-/* Um imóvel atende a preferência quando NADA nela o exclui. Campo ausente no
-   imóvel não exclui: "não sei a área" não é "área errada" -- é a mesma regra
-   de três estados do filtro de coleta. */
-function atendePrefs(d){{
-  const p = PREFS;
-  if (p.preco_min != null && d.preco != null && d.preco < p.preco_min) return false;
-  if (p.preco_max != null && d.preco != null && d.preco > p.preco_max) return false;
-  if (p.quartos_min && d.quartos != null && d.quartos < p.quartos_min) return false;
-  if (p.area_min != null && d.area != null && d.area < p.area_min) return false;
-  if (p.area_max != null && d.area != null && d.area > p.area_max) return false;
-  if (p.cidades && p.cidades.length && !p.cidades.includes(d.cidade)) return false;
-  // bairro vazio na preferência = qualquer bairro daquela cidade serve
-  if (p.bairros && p.bairros.length && d.bairro && !p.bairros.includes(d.bairro))
-    return false;
-  return true;
-}}
+/* Descartado sai das contagens -- senão o número do topo volta a discordar do
+   que está na tela, que é o problema que a contagem dinâmica veio resolver.
+   Favorito NÃO some da lista: continua onde está, com a estrela acesa.
 
-/* Descartado sai das duas listas de bairro E das contagens -- senão o número
-   do topo volta a discordar do que está na tela, que é o problema que a
-   contagem dinâmica veio resolver. Favorito NÃO some das listas: continua
-   onde está, com a estrela acesa. */
+   Não há mais escopo de preferência aqui. Ele existia como um TERCEIRO
+   recorte, invisível na barra de filtros: a tela dizia "8 imóveis" e o
+   catálogo tinha 388, com um balde "Fora delas" do lado. Relato: "o filtro
+   da preferência tem q ser igual a esse, não um pré filtrado". A preferência
+   virou o estado salvo do próprio filtro -- o que está na tela é o que
+   filtra. */
 function noEscopo(d){{
   if (escopo === 'lixeira') return descartado(d);
   if (descartado(d)) return false;
   if (escopo === 'favoritos') return favorito(d);
-  if (escopo === 'outros') return !atendePrefs(d);
-  return atendePrefs(d);
-}}
-
-/* O MAPA não aplica o recorte de preferência, e isso é de propósito.
-
-   Medido: com o escopo padrão ("Minhas preferências"), 3 dos 12 bairros
-   ficavam com cor e Boa Viagem aparecia com "0 imóveis" -- tendo 104
-   anúncios. O mapa vira uma tela quase toda cinza que parece defeito.
-
-   E é o oposto do que ele serve para fazer: a pergunta do mapa é "onde é mais
-   barato", e a resposta útil quase sempre está FORA dos bairros que você já
-   escolheu. Um mapa que só mostra onde você já olha não informa nada.
-
-   Lixeira e favoritos continuam valendo: descartar é dizer "não quero ver
-   isto", e o mapa não pode reintroduzir pela cor o que a pessoa tirou. */
-function noEscopoMapa(d){{
-  if (escopo === 'lixeira') return descartado(d);
-  if (descartado(d)) return false;
-  if (escopo === 'favoritos') return favorito(d);
   return true;
 }}
 
-/* ---------- filtros ---------- */
-const selCidade = el('f-cidade'), selBairro = el('f-bairro'), selQuartos = el('f-quartos');
-const selOrdem = el('f-ordem'), inpMin = el('f-min'), inpMax = el('f-max'), inpBusca = el('f-busca');
+/* ---------- filtros ----------
+   Um filtro só. Cidade e bairro guardam LISTAS: era escolha única, e a
+   seleção múltipla morava num painel de preferências que recortava o
+   catálogo por fora da barra. */
+const selQuartos = el('f-quartos');
+const selOrdem = el('f-ordem'), inpMin = el('f-min'), inpMax = el('f-max');
+const inpAreaMin = el('f-area-min'), inpAreaMax = el('f-area-max');
+const inpBusca = el('f-busca');
 const chips = {{novos: el('c-novos'), quedas: el('c-quedas'), multi: el('c-multi')}};
 
-[...new Set(DADOS.map(d => d.cidade).filter(Boolean))].sort().forEach(c => {{
-  const o = document.createElement('option'); o.value = o.textContent = c; selCidade.appendChild(o);
-}});
+// Listas vazias querem dizer "qualquer um". Isso é melhor que marcar as 11
+// cidades de hoje: cidade ou bairro que aparecer amanhã entra sozinho, em vez
+// de ficar de fora por ter nascido depois da escolha.
+let FCidades = [], FBairros = [];
 
-function preencherBairros(){{
-  const cid = selCidade.value, atual = selBairro.value;
-  const visiveis = DADOS.filter(d => noEscopo(d) && (!cid || d.cidade === cid));
-  selBairro.innerHTML = '<option value="">Bairro: todos</option>';
-  [...new Set(visiveis.map(d => d.bairro).filter(Boolean))].sort().forEach(b => {{
-    const o = document.createElement('option'); o.value = o.textContent = b; selBairro.appendChild(o);
-  }});
-  if ([...selBairro.options].some(o => o.value === atual)) selBairro.value = atual;
+function alternar(lista, v){{
+  const i = lista.indexOf(v);
+  if (i >= 0) lista.splice(i, 1); else lista.push(v);
 }}
-preencherBairros();
+
+function rotuloMulti(lista, singularVazio, nome){{
+  if (!lista.length) return singularVazio;
+  if (lista.length === 1) return nome + ': ' + lista[0];
+  return nome + ': ' + lista.length + ' escolhidos';
+}}
+
+function chipMulti(rot, ligado){{
+  return `<button class="chip-pref" type="button" data-v="${{esc(rot)}}"
+           aria-pressed="${{ligado}}">${{esc(rot)}}</button>`;
+}}
+
+function desenharMulti(){{
+  const cidades = Object.keys(BAIRROS_POR_CIDADE);
+  el('lista-cidades').innerHTML = cidades
+    .map(c => chipMulti(c, FCidades.includes(c))).join('');
+
+  // Só os bairros das cidades escolhidas: a lista inteira das 11 cidades
+  // seria uma parede de chips onde ninguém acha o próprio bairro.
+  const doEscolhido = FCidades.length ? FCidades : cidades;
+  const bairros = [...new Set(doEscolhido
+    .flatMap(c => BAIRROS_POR_CIDADE[c] || []))].sort();
+  // Bairro escolhido cuja cidade saiu da seleção sairia da tela e continuaria
+  // filtrando em silêncio -- a lista encolheria sem nada explicando por quê.
+  FBairros = FBairros.filter(b => bairros.includes(b));
+  el('lista-bairros').innerHTML = bairros
+    .map(b => chipMulti(b, FBairros.includes(b))).join('');
+
+  el('rot-cidades').textContent = rotuloMulti(FCidades, 'Cidade: todas', 'Cidade');
+  el('rot-bairros').textContent = rotuloMulti(FBairros, 'Bairro: todos', 'Bairro');
+}}
+
+/* Delegação: os chips são redesenhados a cada mudança, então ouvir no
+   contêiner evita religar dezenas de handlers a cada toque. */
+function ligarMulti(idLista, obterLista){{
+  el(idLista).addEventListener('click', ev => {{
+    const b = ev.target.closest('.chip-pref');
+    if (!b) return;
+    alternar(obterLista(), b.dataset.v);
+    desenharMulti();
+    render();
+    pintarPulso();
+  }});
+}}
+ligarMulti('lista-cidades', () => FCidades);
+ligarMulti('lista-bairros', () => FBairros);
+
+function abrirMulti(botao, lista, abrir){{
+  botao.setAttribute('aria-expanded', String(abrir));
+  el(lista).hidden = !abrir;
+}}
+for (const [bid, lid] of [['btn-cidades','lista-cidades'], ['btn-bairros','lista-bairros']]){{
+  el(bid).addEventListener('click', () => {{
+    const aberto = el(bid).getAttribute('aria-expanded') === 'true';
+    abrirMulti(el(bid), lid, !aberto);
+  }});
+}}
 
 Object.values(chips).forEach(c => c.addEventListener('click', () => {{
   c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
@@ -821,32 +837,50 @@ Object.values(chips).forEach(c => c.addEventListener('click', () => {{
   pintarPulso();  // o pulso espelha os chips: os dois têm de contar a mesma coisa
 }}));
 
-/* `ignorarLocal` existe para o mapa: o mapa É o seletor de bairro, e pintar
-   só o bairro já escolhido tornaria a comparação impossível -- todo o resto
-   viraria cinza no instante da escolha. O mapa pinta com o recorte inteiro
-   MENOS cidade/bairro; a lista, com tudo. */
-function filtrar(paraMapa){{
+// `num` já existe para valor solto; este lê CAMPO, e campo vazio é "sem
+// limite", não zero.
+function numCampo(campo){{
+  const v = (campo.value || '').trim();
+  return v === '' ? null : parseFloat(v);
+}}
+
+/* Duas variações do MESMO filtro, e nenhuma delas é um recorte escondido:
+
+   `semLocal` é para o mapa. O mapa É o seletor de bairro; pintar só o bairro
+   já escolhido tornaria a comparação impossível, porque todo o resto viraria
+   cinza no instante da escolha. Ele pinta com o recorte inteiro MENOS
+   cidade/bairro.
+
+   `semChips` é para o pulso. "Novos hoje" precisa contar dentro do filtro
+   atual, senão o número no topo e a lista embaixo discordam -- mas contando
+   COM o chip ligado ele viraria a própria contagem dele. */
+function filtrar(opcoes){{
+  const o = opcoes || {{}};
   const qMin = parseInt(selQuartos.value || '0', 10);
-  const cid = paraMapa ? '' : selCidade.value;
-  const bai = paraMapa ? '' : selBairro.value;
-  const dentroDoEscopo = paraMapa ? noEscopoMapa : noEscopo;
-  const mn = inpMin.value ? parseFloat(inpMin.value) : null;
-  const mx = inpMax.value ? parseFloat(inpMax.value) : null;
+  const cidades = o.semLocal ? [] : FCidades;
+  const bairros = o.semLocal ? [] : FBairros;
+  const mn = numCampo(inpMin), mx = numCampo(inpMax);
+  const aMin = numCampo(inpAreaMin), aMax = numCampo(inpAreaMax);
   const q = (inpBusca.value || '').trim().toLowerCase();
-  const soNovos = chips.novos.getAttribute('aria-pressed') === 'true';
-  const soQuedas = chips.quedas.getAttribute('aria-pressed') === 'true';
-  const soMulti = chips.multi.getAttribute('aria-pressed') === 'true';
+  const lig = k => !o.semChips && chips[k].getAttribute('aria-pressed') === 'true';
+  const soNovos = lig('novos'), soQuedas = lig('quedas'), soMulti = lig('multi');
 
   return DADOS.filter(d => {{
-    if (!dentroDoEscopo(d)) return false;
+    if (!noEscopo(d)) return false;
     if (soNovos && !d.novo) return false;
     if (soQuedas && !d.queda) return false;
     if (soMulti && d.qtdFontes < 2) return false;
     if (qMin > 0 && (!d.quartos || d.quartos < qMin)) return false;
-    if (cid && d.cidade !== cid) return false;
-    if (bai && d.bairro !== bai) return false;
+    if (cidades.length && !cidades.includes(d.cidade)) return false;
+    // Bairro vazio no imóvel não é excluído por escolha de bairro: "não sei o
+    // bairro" não é "bairro errado" -- é a mesma regra de três estados do
+    // filtro de coleta, e some-lo esconderia imóvel por falta de dado.
+    if (bairros.length && d.bairro && !bairros.includes(d.bairro)) return false;
     if (mn != null && (d.preco == null || d.preco < mn)) return false;
     if (mx != null && (d.preco == null || d.preco > mx)) return false;
+    // Área ausente NÃO exclui, pelo mesmo motivo.
+    if (aMin != null && d.area != null && d.area < aMin) return false;
+    if (aMax != null && d.area != null && d.area > aMax) return false;
     if (q) {{
       const alvo = [d.titulo, d.bairro, d.cidade, d.logradouro, d.sites.join(' ')]
         .join(' ').toLowerCase();
@@ -884,7 +918,12 @@ const fmtBRL = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR'
   {{maximumFractionDigits:0}});
 
 function pintarPulso(){{
-  const base = DADOS.filter(noEscopo);
+  /* A base do pulso é o FILTRO ATUAL, sem os três chips. Era o escopo inteiro
+     (o catálogo, ou a antiga preferência): com um filtro só, isso passaria a
+     dizer "Novos hoje 12" numa tela com 8 imóveis. Sem os chips porque, com
+     eles, o contador de "Novos" viraria a contagem dele mesmo depois de
+     ligado -- sempre igual ao tamanho da lista. */
+  const base = filtrar({{semChips: true}});
   const novos = base.filter(d => d.novo).length;
   const quedas = base.filter(d => d.queda).length;
   const multi = base.filter(d => d.qtdFontes > 1).length;
@@ -914,9 +953,9 @@ function pintarPulso(){{
        <div><div class="pulso-rot">${{rot}}</div>
        <div class="pulso-val">${{val}}</div></div></button>`;
 
-  // o contador da aba acompanha o escopo: dizer "54" com 16 na tela faria
+  // o contador da aba acompanha o filtro: dizer "54" com 16 na tela faria
   // parecer que o filtro comeu imóvel
-  el('n-aba-imoveis').textContent = base.length;
+  el('n-aba-imoveis').textContent = filtrar().length;
 
   /* Três tiles, não seis. O design system mostra três, e há razão de sobra:
      seis cartões empilham em quatro linhas num telefone e empurram a lista
@@ -998,100 +1037,61 @@ el('inp-restaurar').addEventListener('change', ev => {{
 }});
 
 /* ---------- painel de preferências ---------- */
+/* ---------- preferência = este filtro, guardado ----------
+   Antes era um recorte paralelo, com campos próprios num painel separado e
+   dois baldes no topo ("Minhas preferências" 8 / "Fora delas" 380). Quem
+   olhava a barra de filtros não via nada que explicasse por que a tela
+   mostrava 8 de 388. Agora a preferência não filtra nada por conta própria:
+   ela só PREENCHE estes campos, que continuam visíveis e editáveis. */
 const CAMPOS_PREF = [
-  ['preco_min', 'p-preco-min'], ['preco_max', 'p-preco-max'],
-  ['area_min', 'p-area-min'], ['area_max', 'p-area-max'],
+  ['preco_min', 'f-min'], ['preco_max', 'f-max'],
+  ['area_min', 'f-area-min'], ['area_max', 'f-area-max'],
 ];
 
-function chip(rot, ligado){{
-  return `<button class="chip-pref" type="button" data-v="${{esc(rot)}}"
-           aria-pressed="${{ligado}}">${{esc(rot)}}</button>`;
+function estadoDoFiltro(){{
+  const p = {{cidades: [...FCidades], bairros: [...FBairros],
+             quartos_min: Number(selQuartos.value) || 0}};
+  for (const [chave, id] of CAMPOS_PREF){{
+    const v = (el(id).value || '').trim();
+    p[chave] = v === '' ? null : Number(v);
+  }}
+  return p;
 }}
 
-function desenharPrefs(){{
+function aplicarNoFiltro(p){{
+  FCidades = [...(p.cidades || [])];
+  FBairros = [...(p.bairros || [])];
+  selQuartos.value = String(p.quartos_min || 0);
   for (const [chave, id] of CAMPOS_PREF)
-    el(id).value = PREFS[chave] == null ? '' : PREFS[chave];
-  el('p-quartos').value = String(PREFS.quartos_min || 0);
-
-  const cidades = Object.keys(BAIRROS_POR_CIDADE);
-  el('p-cidades').innerHTML = cidades
-    .map(c => chip(c, (PREFS.cidades || []).includes(c))).join('');
-
-  // Só os bairros das cidades escolhidas: a lista inteira das 11 cidades
-  // seria uma parede de chips onde ninguém acha o próprio bairro.
-  const doSelecionado = (PREFS.cidades && PREFS.cidades.length
-    ? PREFS.cidades : cidades);
-  const bairros = [...new Set(doSelecionado
-    .flatMap(c => BAIRROS_POR_CIDADE[c] || []))].sort();
-  el('p-bairros').innerHTML = bairros
-    .map(b => chip(b, (PREFS.bairros || []).includes(b))).join('');
-
-  const n = DADOS.filter(d => !descartado(d) && atendePrefs(d)).length;
-  el('p-conta').textContent = `${{n}} de ${{DADOS.length}} imóveis atendem`;
+    el(id).value = p[chave] == null ? '' : p[chave];
+  desenharMulti();
 }}
 
-function aplicarPrefs(){{
-  desenharPrefs();
+function notaPref(txt){{
+  const n = el('pref-nota');
+  if (n) n.textContent = txt || '';
+}}
+
+el('btn-salvar-pref').addEventListener('click', () => {{
+  PREFS = estadoDoFiltro();
   gravarPrefs();
-  pintarEscopo();
-  pintarPulso();
-  preencherBairros();
+  notaPref(ARMAZENAMENTO_OK
+    ? 'Salvo. Abre assim da próxima vez.'
+    : 'Este navegador bloqueia dados do site — não deu para salvar.');
+}});
+
+el('btn-usar-pref').addEventListener('click', () => {{
+  aplicarNoFiltro(PREFS);
+  notaPref('');
   render();
-}}
-
-for (const [chave, id] of CAMPOS_PREF){{
-  el(id).addEventListener('change', () => {{
-    const v = el(id).value.trim();
-    PREFS[chave] = v === '' ? null : Number(v);
-    aplicarPrefs();
-  }});
-}}
-el('p-quartos').addEventListener('change', () => {{
-  PREFS.quartos_min = Number(el('p-quartos').value) || 0;
-  aplicarPrefs();
+  pintarPulso();
 }});
 
-/* Delegação: os chips são redesenhados a cada mudança, então ouvir no
-   contêiner evita religar dezenas de handlers a cada toque. */
-function ligarChips(idContainer, chave){{
-  el(idContainer).addEventListener('click', ev => {{
-    const b = ev.target.closest('.chip-pref');
-    if (!b) return;
-    const v = b.dataset.v;
-    const lista = PREFS[chave] ? [...PREFS[chave]] : [];
-    const i = lista.indexOf(v);
-    if (i >= 0) lista.splice(i, 1); else lista.push(v);
-    PREFS[chave] = lista;
-    aplicarPrefs();
-  }});
-}}
-ligarChips('p-cidades', 'cidades');
-ligarChips('p-bairros', 'bairros');
-
-/* "Todos" LIMPA a seleção, não marca tudo. Lista vazia quer dizer "qualquer
-   bairro serve", e isso é melhor que marcar os 30 de hoje: bairro que
-   aparecer amanhã entra sozinho, em vez de ficar de fora por ter nascido
-   depois da escolha. "Nenhum" marcaria zero bairros, o que esconderia a lista
-   inteira -- por isso o segundo botão restaura os bairros do padrão. */
-el('p-bairros-todos').addEventListener('click', () => {{
-  PREFS.bairros = [];
-  aplicarPrefs();
-}});
-el('p-bairros-nenhum').addEventListener('click', () => {{
-  PREFS.bairros = [...(PREFS_PADRAO.bairros || [])];
-  aplicarPrefs();
-}});
-el('p-restaurar').addEventListener('click', () => {{
-  PREFS = Object.assign({{}}, PREFS_PADRAO);
-  aplicarPrefs();
-}});
-
-const btnPrefs = el('btn-prefs'), painelPrefs = el('prefs');
-btnPrefs.addEventListener('click', () => {{
-  const aberto = btnPrefs.getAttribute('aria-expanded') === 'true';
-  btnPrefs.setAttribute('aria-expanded', String(!aberto));
-  painelPrefs.hidden = aberto;
-  if (!aberto) desenharPrefs();
+el('btn-pref-padrao').addEventListener('click', () => {{
+  aplicarNoFiltro(PREFS_PADRAO);
+  notaPref('Sugerido carregado. "Salvar como meu padrão" para guardar.');
+  render();
+  pintarPulso();
 }});
 
 /* Liga (ou desliga) um chip e leva o olho até a lista. Sem a rolagem, no
@@ -1105,18 +1105,21 @@ function ligarChip(nome){{
   el('painel-imoveis').scrollIntoView({{behavior: 'smooth', block: 'start'}});
 }}
 
+/* Restaram os três recortes que são MESMO recortes de lista, e não filtro
+   disfarçado: tudo, o que eu marquei, o que eu joguei fora. "Minhas
+   preferências" e "Fora delas" saíram daqui -- eram filtro, e filtro mora na
+   barra de filtros. */
 const BOTOES_ESCOPO = {{
-  meus: el('e-meus'), outros: el('e-outros'),
+  todos: el('e-todos'),
   favoritos: el('e-favoritos'), lixeira: el('e-lixeira'),
 }};
 
-/* Os contadores das abas descontam o que está na lixeira -- exceto o da
-   própria lixeira. Deixar o descartado somando em "Minhas preferências"
-   faria a aba prometer imóveis que a lista não mostra. */
+/* Os contadores descontam o que está na lixeira -- exceto o da própria
+   lixeira. Deixar o descartado somando em "Todos" faria o chip prometer
+   imóveis que a lista não mostra. */
 function pintarEscopo(){{
   const vivos = DADOS.filter(d => !descartado(d));
-  el('n-meus').textContent = vivos.filter(atendePrefs).length;
-  el('n-outros').textContent = vivos.filter(d => !atendePrefs(d)).length;
+  el('n-todos').textContent = vivos.length;
   el('n-favoritos').textContent = vivos.filter(favorito).length;
   el('n-lixeira').textContent = DADOS.filter(descartado).length;
 }}
@@ -1125,9 +1128,9 @@ function trocarEscopo(novo){{
   escopo = novo;
   Object.entries(BOTOES_ESCOPO).forEach(([k, b]) =>
     b.setAttribute('aria-pressed', String(k === novo)));
-  // a lista de bairros do filtro acompanha o escopo, senão sobra opção que
-  // não seleciona nada
-  preencherBairros();
+  // a lista de bairros acompanha o escopo, senão sobra chip que não seleciona
+  // nada
+  desenharMulti();
   pintarEscopo();
   pintarBackup();
   pintarPulso();
@@ -1395,20 +1398,22 @@ function render(){{
   lista.appendChild(frag);
 }}
 
-selCidade.addEventListener('change', () => {{ preencherBairros(); render(); }});
-[selBairro, selQuartos, selOrdem].forEach(x => x.addEventListener('change', render));
-[inpMin, inpMax].forEach(x => x.addEventListener('input', render));
+[selQuartos, selOrdem].forEach(x => x.addEventListener('change', render));
+[inpMin, inpMax, inpAreaMin, inpAreaMax].forEach(
+  x => x.addEventListener('input', render));
 inpBusca.addEventListener('input', render);
+
 el('btn-limpar').addEventListener('click', () => {{
-  selCidade.value = ''; selQuartos.value = '0'; selOrdem.value = 'relevancia';
-  inpMin.value = inpMax.value = inpBusca.value = '';
-  // O bairro precisa ser zerado ANTES de repovoar a lista: preencherBairros
-  // preserva a seleção atual quando ela ainda existe entre as opções, então
-  // sem esta linha "Limpar" deixava o filtro de bairro de pé -- e a tela
-  // continuava mostrando um punhado de imóveis, com cara de botão quebrado.
-  selBairro.value = '';
+  // "Limpar" mostra TUDO -- inclusive o que a preferência salva escondia.
+  // Antes ela era um escopo à parte e sobrevivia ao Limpar: a tela seguia com
+  // um punhado de imóveis e o botão parecia quebrado.
+  FCidades = []; FBairros = [];
+  selQuartos.value = '0'; selOrdem.value = 'relevancia';
+  inpMin.value = inpMax.value = '';
+  inpAreaMin.value = inpAreaMax.value = inpBusca.value = '';
   Object.values(chips).forEach(c => c.setAttribute('aria-pressed', 'false'));
-  preencherBairros(); render();
+  notaPref('');
+  desenharMulti(); render(); pintarPulso();
 }});
 
 /* ---------- barra de filtros ----------
@@ -1421,11 +1426,13 @@ const btnFiltros = el('btn-filtros'), selo = el('filtros-n');
 
 function contarFiltros(){{
   let n = 0;
-  if (selCidade.value) n++;
-  if (selBairro.value) n++;
+  if (FCidades.length) n++;
+  if (FBairros.length) n++;
   if (selQuartos.value && selQuartos.value !== '0') n++;
   if (inpMin.value) n++;
   if (inpMax.value) n++;
+  if (inpAreaMin.value) n++;
+  if (inpAreaMax.value) n++;
   if (inpBusca.value.trim()) n++;
   n += Object.values(chips).filter(
     c => c.getAttribute('aria-pressed') === 'true').length;
@@ -1497,7 +1504,7 @@ function resumoBairro(itens){{
 
 function pintarMapa(){{
   if (!mapaSvg) return;
-  const por = porBairro(filtrar(true));
+  const por = porBairro(filtrar({{semLocal: true}}));
   const resumo = {{}};
   for (const [k, itens] of Object.entries(por)) resumo[k] = resumoBairro(itens);
 
@@ -1516,7 +1523,6 @@ function pintarMapa(){{
     return 'q' + Math.min(5, Math.floor(pos * 5) + 1);
   }};
 
-  const cidSel = selCidade.value, baiSel = selBairro.value;
   paths.forEach(p => {{
     const partes = p.dataset.b.split('|');
     const cid = partes[0], bai = partes[1];
@@ -1526,9 +1532,10 @@ function pintarMapa(){{
     if (q) p.classList.add(q);
     // fora da cidade escolhida o bairro esmaece, mas continua desenhado:
     // apagar mudaria a forma da região a cada filtro e tirava a referência
-    if (cidSel && cid !== cidSel) p.classList.add('apagado');
+    if (FCidades.length && !FCidades.includes(cid)) p.classList.add('apagado');
     if (mapaSelecionado === p.dataset.b) p.classList.add('sel');
-    else if (baiSel && bai === baiSel && (!cidSel || cid === cidSel)) p.classList.add('sel');
+    else if (FBairros.includes(bai) &&
+             (!FCidades.length || FCidades.includes(cid))) p.classList.add('sel');
 
     const n = info ? info.n : 0;
     const m2 = info && info.m2;
@@ -1577,8 +1584,8 @@ function pintarDetalheMapa(resumo){{
   const partes = mapaSelecionado.split('|');
   const cid = partes[0], bai = partes[1];
   const info = resumo[mapaSelecionado] || {{n: 0, m2: null, preco: null}};
-  const jaFiltrado = selBairro.value === bai &&
-    (!selCidade.value || selCidade.value === cid);
+  const jaFiltrado = FBairros.includes(bai) &&
+    (!FCidades.length || FCidades.includes(cid));
   const eraOculto = mapaDet.hidden;
   mapaDet.hidden = false;
   mapaDet.innerHTML =
@@ -1594,20 +1601,14 @@ function pintarDetalheMapa(resumo){{
     mapaDet.scrollIntoView({{block: 'nearest', behavior: 'smooth'}});
   }}
   el('mapa-ir').addEventListener('click', () => {{
-    /* O mapa mostra a região inteira; a lista, por padrão, só os bairros da
-       preferência. Sem esta troca, tocar em Boa Viagem no mapa não fazia
-       NADA: preencherBairros() monta as opções a partir do escopo, o bairro
-       não estava lá, e `selBairro.value = bai` era descartado em silêncio --
-       a pessoa via a aba trocar e o filtro continuar igual. Se o bairro
-       escolhido está fora da preferência, o escopo vai junto. */
-    if (escopo !== 'lixeira' && escopo !== 'favoritos'){{
-      const daqui = DADOS.filter(d => d.cidade === cid && d.bairro === bai
-                                      && !descartado(d));
-      if (daqui.length && !daqui.some(atendePrefs)) trocarEscopo('outros');
-    }}
-    selCidade.value = cid;
-    preencherBairros();
-    selBairro.value = bai;
+    /* ACRESCENTA ao filtro em vez de substituir: no mapa a pessoa compara
+       bairros vizinhos, e tocar no segundo apagando o primeiro tornaria
+       impossível acompanhar dois de uma vez -- que é justamente o que a
+       seleção múltipla veio permitir. Segundo toque no mesmo bairro tira. */
+    if (!FCidades.includes(cid)) FCidades.push(cid);
+    desenharMulti();          // o bairro só existe depois que a cidade entra
+    if (!FBairros.includes(bai)) FBairros.push(bai);
+    desenharMulti();
     render();
     mostrarAba('imoveis');
   }});
@@ -1656,8 +1657,9 @@ Object.entries(abas).forEach(([k, b]) =>
    não é navegação, e encher o histórico faria o botão "voltar" do celular
    virar desfazer-filtro em vez de sair da página. */
 const CAMPOS_URL = [
-  ['cidade', selCidade], ['bairro', selBairro], ['quartos', selQuartos],
-  ['ordem', selOrdem], ['min', inpMin], ['max', inpMax], ['q', inpBusca],
+  ['quartos', selQuartos], ['ordem', selOrdem],
+  ['min', inpMin], ['max', inpMax],
+  ['amin', inpAreaMin], ['amax', inpAreaMax], ['q', inpBusca],
 ];
 
 function gravarUrl(){{
@@ -1666,10 +1668,15 @@ function gravarUrl(){{
     const v = campo.value;
     if (v && v !== '0' && v !== 'relevancia') p.set(nome, v);
   }}
+  // Listas viram valores repetidos (?bairro=Pina&bairro=Boa+Viagem) em vez de
+  // um campo separado por vírgula: bairro com vírgula no nome quebraria o
+  // split, e URLSearchParams já sabe repetir chave.
+  FCidades.forEach(c => p.append('cidade', c));
+  FBairros.forEach(b => p.append('bairro', b));
   const marcados = Object.entries(chips)
     .filter(([, c]) => c.getAttribute('aria-pressed') === 'true').map(([k]) => k);
   if (marcados.length) p.set('sinais', marcados.join(','));
-  if (escopo !== 'meus') p.set('escopo', escopo);
+  if (escopo !== 'todos') p.set('escopo', escopo);
   for (const nome of ['mapa', 'fontes']){{
     if (abas[nome].getAttribute('aria-selected') === 'true') p.set('aba', nome);
   }}
@@ -1692,20 +1699,29 @@ function lerUrl(){{
     Object.entries(BOTOES_ESCOPO).forEach(([k, b]) =>
       b.setAttribute('aria-pressed', String(k === esc0)));
   }}
-  // cidade primeiro: a lista de bairros depende dela
-  if (p.has('cidade')) selCidade.value = p.get('cidade');
-  preencherBairros();
-  for (const [nome, campo] of CAMPOS_URL){{
-    if (nome !== 'cidade' && p.has(nome)) campo.value = p.get(nome);
+  /* Link compartilhado GANHA da preferência salva. Quem abre um link quer ver
+     o que foi compartilhado; aplicar a preferência por cima mostraria outra
+     coisa e o link viraria mentira. Sem parâmetro nenhum, a preferência entra
+     -- que é o "abre do meu jeito" pedido. */
+  const temFiltroNaUrl = ['cidade','bairro','quartos','min','max','amin','amax','q','sinais']
+    .some(k => p.has(k));
+  if (temFiltroNaUrl){{
+    FCidades = p.getAll('cidade');
+    FBairros = p.getAll('bairro');
+    for (const [nome, campo] of CAMPOS_URL){{
+      if (p.has(nome)) campo.value = p.get(nome);
+    }}
+    const marcados = (p.get('sinais') || '').split(',').filter(Boolean);
+    marcados.forEach(k => chips[k] && chips[k].setAttribute('aria-pressed', 'true'));
+  }} else {{
+    aplicarNoFiltro(PREFS);
   }}
-  const marcados = (p.get('sinais') || '').split(',').filter(Boolean);
-  marcados.forEach(k => chips[k] && chips[k].setAttribute('aria-pressed', 'true'));
+  desenharMulti();
   const aba0 = p.get('aba');
   mostrarAba(abas[aba0] ? aba0 : 'imoveis', false);
 }}
 
 lerUrl();
-desenharPrefs();
 pintarEscopo();
 pintarBackup();
 pintarAvisoArmazenamento();
