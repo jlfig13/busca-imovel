@@ -262,7 +262,7 @@ def test_recorte_nao_vem_mais_pronto_do_python(ambiente):
     """Duas fontes de verdade para a mesma pergunta é o defeito a evitar."""
     html = _html(ambiente, [_imovel()])
     assert '"noRecorte"' not in html
-    assert "function atendePrefs" in html
+    assert "function filtrar(" in html
 
 
 def test_preferencia_e_salva_no_navegador(ambiente):
@@ -271,10 +271,164 @@ def test_preferencia_e_salva_no_navegador(ambiente):
     assert "gravarLista('preferencias', PREFS)" in html
 
 
-def test_campo_ausente_no_imovel_nao_exclui_da_preferencia(ambiente):
+def test_campo_ausente_no_imovel_nao_exclui_o_imovel(ambiente):
     """"Não sei a área" não é "área errada" -- mesma regra de três estados do
-    filtro de coleta."""
+    filtro de coleta. Vale para área e para bairro."""
     html = _html(ambiente, [_imovel()])
-    trecho = html[html.index("function atendePrefs"):html.index("/* Descartado sai")]
-    for campo in ("d.preco != null", "d.quartos != null", "d.area != null"):
+    trecho = html[html.index("function filtrar("):html.index("function ordenar(")]
+    for campo in ("d.area != null", "d.bairro &&"):
         assert campo in trecho, f"{campo} precisa ser checado antes de excluir"
+
+
+# --- a preferência é o filtro, não um recorte paralelo -----------------
+# Relato, com print: "o filtro da preferência tem q ser igual a esse. não um
+# pré filtrado". A tela dizia "8 imóveis" com 388 no catálogo, e olhando a
+# barra de filtros não havia nada explicando de onde vinha o corte -- porque
+# não vinha de lá: vinha de um painel separado com campos próprios.
+
+def test_nao_existe_mais_escopo_de_preferencia(ambiente):
+    html = _html(ambiente, [_imovel()])
+    assert "function atendePrefs" not in html
+    assert 'id="e-meus"' not in html
+    assert 'id="e-outros"' not in html
+    # o painel separado, com campos próprios, foi embora inteiro
+    assert 'id="prefs"' not in html
+    assert 'id="p-bairros"' not in html
+
+
+def test_escopos_restantes_sao_de_lista_e_nao_de_filtro(ambiente):
+    """Tudo / o que eu marquei / o que eu joguei fora. Filtro mora na barra
+    de filtros."""
+    html = _html(ambiente, [_imovel()])
+    for id_ in ('e-todos', 'e-favoritos', 'e-lixeira'):
+        assert f'id="{id_}"' in html
+
+
+def test_cidade_e_bairro_aceitam_varios_na_propria_barra(ambiente):
+    """A seleção múltipla existia só no painel de preferências. Sumir com o
+    painel não pode custar a funcionalidade."""
+    html = _html(ambiente, [_imovel()])
+    assert 'id="lista-cidades"' in html and 'id="lista-bairros"' in html
+    assert "let FCidades = [], FBairros = []" in html
+    # e o <select> de escolha única foi embora
+    assert 'id="f-cidade"' not in html and 'id="f-bairro"' not in html
+
+
+def test_area_desceu_para_a_barra_de_filtros(ambiente):
+    html = _html(ambiente, [_imovel()])
+    assert 'id="f-area-min"' in html and 'id="f-area-max"' in html
+
+
+def test_preferencia_preenche_os_mesmos_campos_da_barra(ambiente):
+    """O ponto do relato: a preferência não pode filtrar por fora. Ela só
+    escreve nos campos que estão na tela."""
+    html = _html(ambiente, [_imovel()])
+    trecho = html[html.index("const CAMPOS_PREF = ["):html.index("function estadoDoFiltro")]
+    for id_ in ("'f-min'", "'f-max'", "'f-area-min'", "'f-area-max'"):
+        assert id_ in trecho
+
+
+def test_limpar_mostra_tudo(ambiente):
+    """Antes a preferência era um escopo e sobrevivia ao Limpar: a tela seguia
+    com um punhado de imóveis e o botão parecia quebrado."""
+    html = _html(ambiente, [_imovel()])
+    trecho = html[html.index("el('btn-limpar').addEventListener"):]
+    trecho = trecho[:trecho.index("pintarPulso();")]
+    assert "FCidades = []; FBairros = []" in trecho
+    assert "inpAreaMin.value = inpAreaMax.value" in trecho
+
+
+def test_link_compartilhado_ganha_da_preferencia(ambiente):
+    """Quem abre um link quer ver o que foi compartilhado; aplicar a
+    preferência por cima faria o link mentir."""
+    html = _html(ambiente, [_imovel()])
+    assert "temFiltroNaUrl" in html
+    trecho = html[html.index("const temFiltroNaUrl"):]
+    trecho = trecho[:trecho.index("desenharMulti();")]
+    assert "aplicarNoFiltro(PREFS)" in trecho
+
+
+# --- aba de mapa -------------------------------------------------------
+# "gostaria de que tivesse uma aba de mapa onde a busca e visualização seja
+# pelo mapa", com a decisão de manter o dashboard offline (SVG no arquivo,
+# sem tiles).
+
+def _com_geo(monkeypatch, cache):
+    import geo
+    monkeypatch.setattr(geo, "carregar", lambda: cache)
+
+
+def _quadrado(lon, lat, r=0.004):
+    return [[lon - r, lat - r], [lon + r, lat - r],
+            [lon + r, lat + r], [lon - r, lat + r], [lon - r, lat - r]]
+
+
+def test_aba_de_mapa_existe(ambiente, monkeypatch):
+    _com_geo(monkeypatch, {})
+    html = _html(ambiente, [_imovel()])
+    assert 'id="aba-mapa"' in html and 'id="painel-mapa"' in html
+
+
+def test_sem_contornos_o_mapa_explica_em_vez_de_ficar_branco(ambiente, monkeypatch):
+    _com_geo(monkeypatch, {})
+    html = _html(ambiente, [_imovel()])
+    assert "mapa-vazio" in html
+    assert "geo/bairros.json" in html
+    assert 'class="mapa-bairro"' not in html
+
+
+def test_bairro_com_contorno_vira_path(ambiente, monkeypatch):
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    assert 'data-b="Recife|Pina"' in html
+
+
+def test_bairro_sem_anuncio_nesta_rodada_nao_e_desenhado(ambiente, monkeypatch):
+    """O cache ACUMULA entre rodadas. Desenhar tudo que já foi buscado
+    encheria a tela de polígono cinza e faria a região parecer vazia quando o
+    vazio é do recorte, não da cidade."""
+    _com_geo(monkeypatch, {
+        "Recife|Pina": {"anel": _quadrado(-34.885, -8.095)},
+        "Recife|Ipsep": {"anel": _quadrado(-34.930, -8.110)},
+    })
+    html = _html(ambiente, [_imovel()])   # só Pina
+    assert 'data-b="Recife|Pina"' in html
+    assert 'data-b="Recife|Ipsep"' not in html
+
+
+def test_atribuicao_do_openstreetmap_acompanha_a_geometria(ambiente, monkeypatch):
+    """ODbL exige crédito de quem redistribui. Não é formalidade: é a mesma
+    postura que fez o projeto respeitar robots.txt."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    assert "openstreetmap.org/copyright" in html
+    assert "ODbL" in html
+
+
+def test_mapa_nao_carrega_nada_de_fora(ambiente, monkeypatch):
+    """O invariante do projeto: um arquivo só, sem servidor. Tile é requisição
+    em tempo de execução e cairia junto com a rede."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    for proibido in ("leaflet", "tile.openstreetmap", "unpkg.com", "cdn."):
+        assert proibido not in html.lower()
+
+
+def test_mapa_pinta_ignorando_cidade_e_bairro(ambiente, monkeypatch):
+    """O mapa É o seletor de bairro: pintar só o bairro já escolhido tornaria
+    a comparação impossível, porque todo o resto viraria cinza no instante da
+    escolha. O resto do recorte (preço, quartos, área) continua valendo."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    assert "porBairro(filtrar({semLocal: true}))" in html
+
+
+def test_ir_para_o_bairro_acrescenta_em_vez_de_substituir(ambiente, monkeypatch):
+    """No mapa a pessoa compara bairros vizinhos; tocar no segundo apagando o
+    primeiro tiraria justamente o que a seleção múltipla veio permitir."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    trecho = html[html.index("el('mapa-ir').addEventListener"):]
+    trecho = trecho[:trecho.index("mostrarAba('imoveis')")]
+    assert "FBairros.push(bai)" in trecho
+    assert "FCidades.push(cid)" in trecho

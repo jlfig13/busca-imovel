@@ -2,6 +2,92 @@
 
 ---
 
+## Fase 17 — Aba de mapa, sem sair do offline (06/09/2026)
+
+Pedido: "esse repo de caiooaragao tem busca em OLX + mapa (...) gostei do
+mapa, poderia ter uma aba de mapa onde a busca e visualização seja pelo
+mapa". Decisão do usuário na escolha de abordagem: **"vai de A, mantém o
+offline"**.
+
+- [x] **Leaflet descartado, e por quê.** A referência usa Leaflet com tiles do
+  OSM e fica melhor de olhar — mas é um app Next.js com servidor. Aqui o
+  dashboard é UM arquivo que abre por duplo clique; tile é requisição em tempo
+  de execução e cairia junto com a rede. O mapa vai em SVG desenhado no
+  arquivo. *Perde:* rua por baixo, zoom contínuo, pan. *Ganha:* mapa que
+  funciona num avião, e ninguém observando quem olha o quê.
+
+- [x] **O extrato de bairros do rent_finder não servia — duas vezes.**
+  (1) A consulta dele pede `place=suburb|neighbourhood`, e Recife e Olinda
+  mapeiam bairro como `boundary=administrative`, `admin_level=10`: cobria **8
+  dos nossos 61 bairros**, 74 de 476 anúncios, sem Boa Viagem (104), Casa
+  Caiada (50), Madalena, Torre nem Pina. (2) Dos 8, **6 estavam na cidade
+  errada** — o arquivo casa nome de bairro sem checar município, e
+  "Recife|Boa Vista" aponta para uma Boa Vista em **Petrolina**, 700km
+  adentro. Daí `geo._na_regiao`, com a caixa da RMR: no mapa, homônimo
+  distante não dá erro — estica a escala e espreme a região inteira num canto.
+  A consulta própria aceita as duas formas do OSM.
+
+- [x] **Cache versionado, não consulta por rodada.** Fronteira de bairro não
+  muda. Consultar o Overpass 12 vezes por dia para receber o mesmo polígono
+  seria carga gratuita num serviço voluntário — e o projeto acabou de gastar a
+  Fase 5 sendo cuidadoso com carga alheia. Cada bairro é buscado **uma vez na
+  vida do projeto** (`geo/bairros.json`, teto de 25 por rodada, ausência
+  registrada para não reperguntar). Mesma forma do `triagem.json`.
+  *Atribuição:* OpenStreetMap sob **ODbL** exige crédito de quem redistribui;
+  vai no rodapé da aba. Não é formalidade — é a mesma postura do robots.txt.
+
+- [x] **Divisão de trabalho: Python só a geometria.** `mapa.py` emite um
+  `<path>` por bairro, sem cor. Cor, clique e rótulo ficam no JS porque
+  precisam responder ao filtro — mapa que ignora o recorte seria decoração, e
+  o pedido era busca *pelo* mapa.
+  *Escala:* cor = R$/m² **mediano** do bairro (média deixaria uma cobertura
+  pintar o bairro inteiro), em cinco degraus por **quantil** (faixa fixa de
+  reais empilharia quase todos num degrau só, porque os preços da região são
+  próximos). Custo aceito: a cor é relativa ao recorte, então a legenda diz os
+  extremos em reais. Mínimo de 2 anúncios para colorir.
+
+- [x] **Dois defeitos que só apareceram rodando, não lendo.** Conferido no
+  Chromium a 412px (o alvo do CLAUDE.md), nos dois temas:
+  (1) com o escopo padrão "Minhas preferências", **3 de 12 bairros** ficavam
+  com cor e Boa Viagem aparecia com "0 imóveis" tendo 104 anúncios — o mapa
+  deixou de aplicar o recorte de preferência, porque a pergunta dele é "onde é
+  mais barato" e a resposta útil mora fora do que já se escolheu (lixeira e
+  favoritos continuam valendo);
+  (2) tocar num bairro fora da preferência **não fazia nada** —
+  `preencherBairros` monta as opções pelo escopo, o bairro não estava lá, e
+  `selBairro.value = bai` era descartado em silêncio. Agora o escopo vai junto.
+  Terceira falha silenciosa da mesma família neste projeto.
+
+- [x] **Projeção corrigida.** Media a latitude a partir da mediana, o que
+  punha metade dos bairros com y negativo — fora do viewBox, desenhados fora
+  da tela, sem erro nenhum no console.
+
+**Ainda não fechado:** `geo/bairros.json` entra **vazio**. O Overpass é
+inalcançável deste ambiente (curl 000), então quem preenche é o runner do
+Actions, 25 bairros por rodada — com ~61 bairros, completo em 3 rodadas. Até
+lá a aba explica em vez de mostrar tela branca.
+
+---
+
+## Fase 16 — Condomínio zerado no card (06/09/2026)
+
+- [x] **Reincidência do CRECI.** "valor CRECI Brasil o aluguel é 2500, mas
+  condomínio e IPTU não foram somados" — mesmo relato, depois da Fase 14 ter
+  ligado a visita ao detalhe. Medido na rodada 62: os **28** anúncios do
+  portal com `custo_completo=1` e `condominio=0`.
+  *Causa:* os cards imprimem "Condomínio R$ 0,00". O regex lia 0.0 como valor
+  informado, `decompor_custo` dava o custo por fechado, e `_vale_visitar`
+  então recusava a visita — o detalhe estava ligado e sem efeito nenhum.
+  *Regra nova:* zero de condomínio é "não informado", como o próprio
+  comentário da função já dizia ("condomínio praticamente nunca é zero"). IPTU
+  zero continua valendo: isenção existe, e ele nunca decide sozinho se o custo
+  está completo.
+  *Trade-off:* anúncio de condomínio genuinamente zero passa a gastar uma
+  visita ao detalhe. Barato perto do erro que evita — não é um imóvel a menos,
+  é um imóvel errado ocupando a lista dentro do orçamento.
+
+---
+
 ## Fase 15 — A foto é a do anúncio que o card abre (06/09/2026)
 
 - [x] **Foto e link vinham de anúncios diferentes.** A capa era "a maior

@@ -652,8 +652,18 @@ def decompor_custo(texto: str) -> dict:
     m = _RE_CONDOMINIO.search(texto)
     if m:
         condominio = _parse_valor_br(m.group(1))
+        # "Condomínio R$ 0,00" é campo em branco, não isenção: o Portal CRECI
+        # imprime esse zero em TODO card, e ele fazia o anúncio passar por
+        # completo -- o detalhe nunca era aberto e um aluguel de R$ 2.500 com
+        # condomínio e IPTU seguia mostrado como R$ 2.500. Zero aqui é
+        # "não informado"; o custo real vem da visita ao anúncio.
+        if not condominio:
+            condominio = None
     m = _RE_IPTU.search(texto)
     if m:
+        # IPTU zero, ao contrário, é plausível (imóvel isento), mas também é
+        # o que o portal imprime quando não sabe. Como o IPTU nunca decide
+        # sozinho se o custo está completo, guardar o zero não custa nada.
         iptu = _parse_valor_br(m.group(1))
 
     # "Pacote de locação" é o total já somado pelo site. Nesse caso o

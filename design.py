@@ -87,6 +87,22 @@ CSS_TOKENS = """
   --atencao:#B45309;  --atencao-lavado:#FEF3DC;
   --ruim:#DC2626;     --ruim-lavado:#FDECEC;
 
+  /* Escala do mapa: barato -> caro, em cinco degraus.
+     Cinco e não um gradiente contínuo porque o olho não lê diferença de 5%
+     de matiz num polígono de 20px; degrau nomeado é comparável ("este é
+     mais caro que aquele") e sobrevive à impressão em tons de cinza, já que
+     a luminosidade também cai de ponta a ponta.
+     Não é a sequência verde-amarelo-vermelho de semáforo: caro não é erro,
+     é caro. Vai do turquesa da marca ao ocre, sem passar por --ruim, que
+     neste dashboard significa fonte quebrada. */
+  --mapa-1:#99F6E4;
+  --mapa-2:#5EEAD4;
+  --mapa-3:#7DD3FC;
+  --mapa-4:#FDBA74;
+  --mapa-5:#F97316;
+  --mapa-sem:#E2E8F0;   /* bairro sem preço nesta seleção */
+  --mapa-traco:#FFFFFF;
+
   --foco:#0EA5E9;
   --sombra:0 1px 2px rgba(21,25,28,.05), 0 1px 8px rgba(21,25,28,.04);
 
@@ -121,6 +137,13 @@ CSS_TOKENS = """
     --bom:#2DD4BF;      --bom-lavado:#0C2E2B;
     --atencao:#FBBF24;  --atencao-lavado:#2E2410;
     --ruim:#F87171;     --ruim-lavado:#331717;
+    --mapa-1:#134E4A;
+    --mapa-2:#0F766E;
+    --mapa-3:#0369A1;
+    --mapa-4:#B45309;
+    --mapa-5:#EA580C;
+    --mapa-sem:#1E3050;
+    --mapa-traco:#0B1220;
     --foco:#38BDF8;
     --sombra:0 1px 2px rgba(0,0,0,.4), 0 1px 8px rgba(0,0,0,.25);
   }
@@ -144,6 +167,13 @@ CSS_TOKENS = """
   --bom:#2DD4BF;      --bom-lavado:#0C2E2B;
   --atencao:#FBBF24;  --atencao-lavado:#2E2410;
   --ruim:#F87171;     --ruim-lavado:#331717;
+  --mapa-1:#134E4A;
+  --mapa-2:#0F766E;
+  --mapa-3:#0369A1;
+  --mapa-4:#B45309;
+  --mapa-5:#EA580C;
+  --mapa-sem:#1E3050;
+  --mapa-traco:#0B1220;
   --foco:#38BDF8;
   --sombra:0 1px 2px rgba(0,0,0,.4), 0 1px 8px rgba(0,0,0,.25);
 }
@@ -463,30 +493,42 @@ a{color:inherit;}
 .btn-backup:hover{border-color:var(--linha-forte); color:var(--tinta);}
 .backup-nota{font-size:12px; color:var(--tinta-suave);}
 
-/* ---------- painel de preferências ---------- */
-/* O recorte deixou de ser decisão do config e virou decisão de quem olha.
-   Fica num painel próprio, separado dos Filtros: filtro é o recorte do
-   momento, preferência é o que define "minha lista" e sobrevive à rodada. */
-.prefs[hidden]{display:none;}
-.prefs{
-  display:flex; flex-direction:column; gap:12px; padding:14px 0 4px;
+/* ---------- cidade e bairro: seleção múltipla ----------
+   Um painel de "Preferências" separado guardava a seleção múltipla e
+   recortava o catálogo por fora da barra de filtros -- a tela dizia "8
+   imóveis" com 388 no catálogo e ninguém via, olhando os Filtros, de onde
+   vinha o corte. Relato: "o filtro da preferência tem q ser igual a esse, não
+   um pré filtrado". O painel morreu; a seleção múltipla desceu para cá.
+
+   Botão que abre uma gaveta de chips, e não um <select multiple>: no Android
+   o multiple vira uma lista de rolagem minúscula, e no iOS um seletor de
+   roda em que marcar três bairros é quase impossível. Chip é alvo de toque
+   de 28px que mostra o que está ligado sem precisar abrir nada. */
+.campo-multi{position:relative; display:flex; flex-direction:column; gap:6px;}
+.btn-multi{
+  height:38px; padding:0 10px; display:flex; align-items:center; gap:6px;
+  border:1px solid var(--linha); border-radius:var(--r);
+  background:var(--superficie); color:var(--tinta); cursor:pointer;
+  font:inherit; font-size:14px; white-space:nowrap;
 }
-.prefs-nota{
-  margin:0; font-size:12.5px; line-height:1.5; color:var(--tinta-suave);
-}
-.prefs-linha{display:flex; gap:8px; flex-wrap:wrap;}
-.prefs-grupo{display:flex; flex-direction:column; gap:6px;}
-.prefs-rot{
-  font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
-  text-transform:uppercase; color:var(--tinta-fraca);
-  display:flex; align-items:center; gap:6px;
-}
+.btn-multi svg{width:16px; height:16px; stroke:currentColor; fill:none;
+  stroke-width:1.6; opacity:.65;}
+.btn-multi .seta{margin-left:auto; display:flex; transition:transform .15s ease;}
+.btn-multi[aria-expanded="true"]{border-color:var(--linha-forte);}
+.btn-multi[aria-expanded="true"] .seta{transform:rotate(90deg);}
+.chips-multi[hidden]{display:none;}
 /* Altura limitada com rolagem PRÓPRIA: trinta bairros empurrariam a lista de
-   imóveis para fora da tela toda vez que o painel abrisse. */
-.prefs-chips{
+   imóveis para fora da tela toda vez que a gaveta abrisse. */
+.chips-multi{
   display:flex; flex-wrap:wrap; gap:5px;
-  max-height:132px; overflow-y:auto;
+  max-height:132px; overflow-y:auto; padding:2px;
 }
+.filtros-rodape{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  width:100%; padding-top:10px; margin-top:2px;
+  border-top:1px solid var(--linha);
+}
+.prefs-conta{font-size:12px; color:var(--tinta-suave);}
 .chip-pref{
   height:28px; padding:0 10px; border-radius:14px; cursor:pointer;
   border:1px solid var(--linha); background:var(--superficie);
@@ -501,14 +543,21 @@ a{color:inherit;}
   :root:not([data-tema="escuro"]) .chip-pref[aria-pressed="true"]{color:#fff;}
 }
 .btn-mini{
-  height:24px; padding:0 8px; border-radius:6px; cursor:pointer;
+  height:26px; padding:0 8px; border-radius:6px; cursor:pointer;
   border:1px solid var(--linha); background:var(--superficie);
   color:var(--tinta-media); font-family:var(--sans); font-size:11.5px;
   text-transform:none; letter-spacing:0;
+  display:inline-flex; align-items:center; gap:5px;
+}
+/* Sem esta regra o SVG assume o tamanho do viewBox e vaza por cima da lista:
+   o botão fica visualmente vazio e uma estrela gigante cobre o conteúdo
+   abaixo. Aconteceu no primeiro .btn-mini que ganhou ícone. */
+.btn-mini svg{
+  width:13px; height:13px; flex:none;
+  stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round;
 }
 .btn-mini:hover{border-color:var(--linha-forte); color:var(--tinta);}
-.prefs-rodape{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
-.prefs-conta{font-size:12px; color:var(--tinta-suave);}
 
 /* ---------- barra de filtros ---------- */
 .barra-filtros{
@@ -875,6 +924,60 @@ a{color:inherit;}
   .oferta-link:hover{text-decoration:none;}
 }
 
+/* ---------- aba Mapa ----------
+   Mapa desenhado no próprio arquivo (mapa.py emite os <path>), sem tiles e
+   sem biblioteca: o dashboard tem de abrir offline. Aqui só a pintura.
+
+   A cor é o preço por m² MEDIANO do bairro dentro do recorte atual, não um
+   valor fixo assado no HTML -- o pedido era "a busca e visualização pelo
+   mapa", e mapa que ignora o filtro é decoração. Por isso o JS repinta a
+   cada render().
+
+   Bairro sem preço no recorte fica em --mapa-sem, e não invisível: sumir com
+   o polígono faria a cidade mudar de forma a cada filtro, e a pessoa perderia
+   a referência de onde está olhando. */
+.mapa-caixa{background:var(--superficie); border:1px solid var(--linha);
+  border-radius:var(--r-card); padding:12px; box-shadow:var(--sombra);}
+/* max-height: a região é mais alta que larga (Igarassu a Ipojuca são ~60km
+   norte-sul contra ~25km leste-oeste), então num telefone de 412px o mapa
+   ocupava ~640px de altura e empurrava legenda e detalhe para baixo da dobra
+   -- a pessoa tocava num bairro e a resposta aparecia fora da tela.
+   preserveAspectRatio="xMidYMid meet" centraliza o desenho no que sobra. */
+.mapa-svg{display:block; width:100%; height:auto; max-height:58vh;
+  touch-action:manipulation;}
+.mapa-bairro{fill:var(--mapa-sem); stroke:var(--mapa-traco); stroke-width:.6;
+  cursor:pointer; transition:fill .15s ease, opacity .15s ease;}
+.mapa-bairro.q1{fill:var(--mapa-1);} .mapa-bairro.q2{fill:var(--mapa-2);}
+.mapa-bairro.q3{fill:var(--mapa-3);} .mapa-bairro.q4{fill:var(--mapa-4);}
+.mapa-bairro.q5{fill:var(--mapa-5);}
+/* Selecionado ganha CONTORNO, não só cor: a cor já carrega o preço, e
+   trocá-la para marcar seleção diria a coisa errada. */
+.mapa-bairro.sel{stroke:var(--tinta); stroke-width:2;}
+.mapa-bairro.apagado{opacity:.35;}
+.mapa-rotulo{font-size:7px; fill:var(--tinta); paint-order:stroke;
+  stroke:var(--fundo); stroke-width:2.5px; stroke-linejoin:round;
+  pointer-events:none; text-anchor:middle; font-weight:600;}
+.mapa-ponto{fill:var(--tinta); pointer-events:none;}
+
+.mapa-legenda{display:flex; align-items:center; gap:8px; margin-top:10px;
+  font-size:12px; color:var(--tinta-suave); flex-wrap:wrap;}
+.mapa-escala{display:flex; gap:2px;}
+.mapa-degrau{width:22px; height:10px; border-radius:2px;}
+.mapa-degrau.q1{background:var(--mapa-1);} .mapa-degrau.q2{background:var(--mapa-2);}
+.mapa-degrau.q3{background:var(--mapa-3);} .mapa-degrau.q4{background:var(--mapa-4);}
+.mapa-degrau.q5{background:var(--mapa-5);}
+
+/* Toque no bairro abre esta faixa em vez de trocar de aba na hora: no
+   celular, trocar de tela ao encostar num polígono de 20px transforma erro
+   de mira em navegação indesejada. Aqui a pessoa vê o que escolheu e decide. */
+.mapa-detalhe{margin-top:12px; border-top:1px solid var(--linha); padding-top:12px;}
+.mapa-detalhe h3{margin:0 0 2px; font-size:16px; color:var(--tinta);}
+.mapa-detalhe p{margin:0 0 10px; font-size:13px; color:var(--tinta-suave);}
+.mapa-vazio{color:var(--tinta-suave); font-size:13.5px; text-align:center;
+  padding:28px 12px; line-height:1.5;}
+.mapa-fonte{margin-top:10px; font-size:11.5px; color:var(--tinta-fraca);}
+.mapa-fonte a{color:inherit;}
+
 /* Cards lado a lado quando sobra largura: aí a foto vai para o topo, como
    na grade dos portais. */
 @media (min-width:1000px){
@@ -951,6 +1054,7 @@ a{color:inherit;}
 
 /* Telas estreitas (o Poco cai aqui com fonte do sistema aumentada). */
 @media (max-width:430px){
+  .mapa-rotulo{display:none;}
   /* 2x2: com larguras naturais a segunda linha ficava desalinhada da
      primeira, e o grupo parecia quebrado em vez de dobrado. */
   .escopo{display:flex; width:100%;}

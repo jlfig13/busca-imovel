@@ -1,6 +1,6 @@
 # Estado Atual
 
-**Atualizado em:** 2026-09-05
+**Atualizado em:** 2026-09-06
 **Branch:** `claude/remote-control-hgauah`
 **No ar:** https://jlfig13.github.io/busca-imovel/
 
@@ -14,6 +14,43 @@
 | [#4](https://github.com/jlfig13/busca-imovel/pull/4) | Cron 07:00 → 07:13 BRT, fora da hora cheia |
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
+
+**06/09 (4): aba Mapa.** "gostei do mapa, poderia ter uma aba de mapa onde a
+busca e visualização seja pelo mapa" — a partir do `caiooaragao/rent_finder`.
+Decisão do usuário: **opção A, mantém o offline**. O mapa vai desenhado em SVG
+no próprio arquivo; nada de Leaflet, que precisa de tiles em runtime.
+
+O que a comparação com o repo dele rendeu, medido:
+
+- O extrato `overpass-bairros-pe.geojson` cobre **8 dos nossos 61 bairros**
+  (74 de 476 anúncios). A consulta dele pede `place=suburb|neighbourhood`, e
+  Recife/Olinda mapeiam bairro como `boundary=administrative`,
+  `admin_level=10`. Ficam de fora Boa Viagem (104 anúncios), Casa Caiada (50),
+  Madalena, Torre, Pina.
+- E **6 dos 8 estão na cidade errada**: o arquivo casa nome sem checar
+  município — "Recife|Boa Vista" aponta para uma Boa Vista em **Petrolina**.
+  Daí a caixa da RMR em `geo._na_regiao`: no mapa, homônimo distante não dá
+  erro, só estica a escala e espreme a região num canto.
+
+`geo.py` busca cada bairro **uma vez na vida do projeto** (cache versionado em
+`geo/bairros.json`, teto de 25 por rodada, ausência registrada). `mapa.py`
+emite só a geometria; cor e clique ficam no JS, porque respondem ao filtro.
+
+Dois defeitos achados rodando no Chromium a 412px, não lendo o código:
+
+- Com o escopo padrão, **3 de 12 bairros** ficavam com cor e Boa Viagem
+  aparecia com "0 imóveis" tendo 104 anúncios. O mapa deixou de aplicar o
+  recorte de preferência: a pergunta dele é "onde é mais barato", e a resposta
+  útil mora fora do que já se escolheu.
+- Tocar num bairro fora da preferência **não fazia nada** — `preencherBairros`
+  monta as opções pelo escopo, o bairro não estava lá, e a atribuição era
+  descartada em silêncio.
+
+**06/09 (3): CRECI, de novo.** Os 28 anúncios do portal saíram da rodada 62
+com `custo_completo=1` e `condominio=0`. Os cards imprimem "Condomínio R$
+0,00"; o parser lia zero como valor informado, dava o custo por fechado e
+`_vale_visitar` recusava a visita ao detalhe — a correção da fase anterior
+estava ligada e sem efeito. Zero de condomínio passa a ser "não informado".
 
 **06/09 (2):** "clico e aparece outras fotos e não a que tá no meu portal".
 
@@ -465,14 +502,23 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 - [ ] Decidir o corte de fontes (acima).
 - [ ] Alerta ativo — hoje é preciso abrir o dashboard para saber que algo
       baixou de preço.
+- [ ] **Encher `geo/bairros.json`.** O arquivo entra vazio: o Overpass é
+      inalcançável deste ambiente (curl 000), então quem preenche é o runner,
+      25 bairros por rodada. Com ~61 bairros, o mapa fica completo em 3
+      rodadas. Até lá a aba mostra a explicação, não uma tela branca.
+- [ ] **Página de KPI** (valorização por bairro/cidade). O "bairro mais caro
+      e mais barato" já é viável — a aba Mapa responde isso. A valorização
+      ainda não: 14 eventos de preço em 17 dias, e há viés de composição
+      documentado no BACKLOG.
 
 ---
 
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 236 testes, ~4s.
-- Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
+- 270 testes, ~4s.
+- Banco: manutenção limpa só apresentação de anúncio fora do ar; o histórico
+  (`evento`) é preservado. VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada
   rodada — evitar mexer neles localmente para não conflitar com o `git pull`.

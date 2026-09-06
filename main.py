@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import config
 import db
+import geo
 import report
 import robots
 import dashboard
@@ -269,6 +270,18 @@ def rodar():
     # do que está fora dos bairros escolhidos seria gastar rede com o que
     # quase nunca é aberto. Fora do recorte fica a foto do card.
     _completar_galerias(exibidos)
+
+    # Contorno dos bairros para a aba de mapa. Cada bairro é buscado UMA vez
+    # na vida do projeto (o cache mora em geo/bairros.json, versionado) e o
+    # teto por rodada mantém a carga no Overpass -- infraestrutura voluntária
+    # da OSM -- perto de zero: o que não couber hoje entra amanhã. Nunca pode
+    # derrubar a rodada: mapa é conveniência, catálogo é o produto.
+    try:
+        pares = sorted({(i["cidade"], i["bairro"]) for i in imoveis
+                        if i.get("cidade") and i.get("bairro")})
+        geo.atualizar(pares)
+    except Exception as e:
+        log.warning(f"[geo] contornos não atualizados nesta rodada: {str(e)[:160]}")
 
     # A planilha segue com o recorte -- ela é a lista de trabalho, não o
     # inventário da cidade.

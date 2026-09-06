@@ -14,6 +14,8 @@ queda de R$ 341 que nunca aconteceu, na mesma série que alimenta o selo
 "Baixou" do dashboard.
 """
 import db
+import utils
+import detalhe_custo
 
 
 def test_taxa_conhecida_de_rodada_anterior_volta_para_a_soma():
@@ -247,3 +249,29 @@ def test_enriquecer_nao_reordena_a_lista_de_quem_chamou():
     itens = [{"url": "b", "preco": 2000.0}, {"url": "a", "preco": 1000.0}]
     detalhe_custo.enriquecer(itens, buscar=lambda u: None)
     assert [i["url"] for i in itens] == ["b", "a"]
+
+
+def test_condominio_zero_no_card_nao_fecha_o_custo():
+    """"Condomínio R$ 0,00" é campo em branco, não isenção.
+
+    O Portal CRECI imprime esse zero em todo card. Lido como valor real, ele
+    marcava o anúncio como completo e o detalhe nunca era aberto -- um
+    aluguel de R$ 2.500 com condomínio e IPTU seguia exibido como R$ 2.500.
+    """
+    c = utils.decompor_custo("Aluguel R$ 2.500,00 Condomínio R$ 0,00 IPTU R$ 0,00")
+    assert c["condominio"] is None
+    assert c["custo_completo"] is False
+    assert c["custo_mensal_total"] == 2500.0
+
+
+def test_condominio_zero_deixa_o_anuncio_valendo_a_visita():
+    item = {"url": "https://portalcreci.org.br/x", "preco": 2500.0}
+    item.update(utils.decompor_custo("Aluguel R$ 2.500,00 Condomínio R$ 0,00"))
+    assert detalhe_custo._vale_visitar(item) is True
+
+
+def test_condominio_de_verdade_continua_fechando_o_custo():
+    c = utils.decompor_custo("Aluguel R$ 2.500,00 Condomínio R$ 480,00 IPTU R$ 120,00")
+    assert c["condominio"] == 480.0
+    assert c["custo_completo"] is True
+    assert c["custo_mensal_total"] == 3100.0
