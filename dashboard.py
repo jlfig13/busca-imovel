@@ -15,6 +15,8 @@ import afinidade
 import config
 import db
 import design
+import geo
+import mapa
 from utils import log, NAO_LOCALIZADO
 
 
@@ -153,6 +155,39 @@ def _painel_rendimento(rendimento: list[dict] | None) -> str:
     </div>"""
 
 
+def _painel_mapa(svg: str) -> str:
+    """Aba de mapa. Sem geometria no cache, diz por quê em vez de ficar branca.
+
+    A atribuição à OpenStreetMap não é enfeite de rodapé: os polígonos vêm de
+    lá sob ODbL, que EXIGE crédito de quem redistribui. É a mesma postura que
+    fez o projeto respeitar robots.txt -- usar o trabalho dos outros nas
+    condições que eles pediram.
+    """
+    if not svg:
+        return """<div class="mapa-caixa"><p class="mapa-vazio">
+        O mapa ainda não tem os contornos dos bairros.<br>
+        Eles são buscados na OpenStreetMap uma vez por bairro e guardados em
+        <code>geo/bairros.json</code>; a próxima rodada completa o que faltar.
+        </p></div>"""
+    return f"""<div class="mapa-caixa">
+      {svg}
+      <div class="mapa-legenda">
+        <span>Mais barato</span>
+        <span class="mapa-escala">
+          <span class="mapa-degrau q1"></span><span class="mapa-degrau q2"></span>
+          <span class="mapa-degrau q3"></span><span class="mapa-degrau q4"></span>
+          <span class="mapa-degrau q5"></span>
+        </span>
+        <span>Mais caro</span>
+        <span id="mapa-legenda-nota"></span>
+      </div>
+      <div class="mapa-detalhe" id="mapa-detalhe" hidden></div>
+      <p class="mapa-fonte">Contornos dos bairros:
+        <a href="https://www.openstreetmap.org/copyright" target="_blank"
+           rel="noopener noreferrer">OpenStreetMap</a>, sob ODbL.</p>
+    </div>"""
+
+
 def _ler_triagem() -> dict:
     """Lê triagem.json (favoritos/descartes versionados) para embutir no HTML.
 
@@ -266,6 +301,17 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
             bairros_por_cidade.setdefault(d["cidade"], set()).add(d["bairro"])
     bairros_por_cidade = {c: sorted(b) for c, b in sorted(bairros_por_cidade.items())}
     json_bairros = json.dumps(bairros_por_cidade, ensure_ascii=False)
+
+    # Geometria do mapa: só os bairros que a rodada realmente trouxe. O cache
+    # acumula (geo/bairros.json guarda tudo que já foi buscado), mas desenhar
+    # bairro sem anúncio nenhum encheria a tela de polígono cinza e faria a
+    # região parecer vazia quando o vazio é do recorte, não da cidade.
+    presentes = {f"{d['cidade']}|{d['bairro']}"
+                 for d in dados if d["cidade"] and d["bairro"]}
+    cache_geo = {k: v for k, v in geo.carregar().items() if k in presentes}
+    mapa_svg, mapa_centros = mapa.caminhos(cache_geo)
+    json_centros = json.dumps(mapa_centros, ensure_ascii=False)
+
     ic = design.ICONES
     hoje = date.today().strftime("%d/%m/%Y")
     # Hora da rodada em BRT. O runner do Actions roda em UTC e o dashboard é
@@ -501,6 +547,9 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
     <button class="aba" id="aba-imoveis" role="tab" aria-selected="true"
             aria-controls="painel-imoveis" type="button">
       Imóveis <span class="aba-n" id="n-aba-imoveis">{len(dados)}</span></button>
+    <button class="aba" id="aba-mapa" role="tab" aria-selected="false"
+            aria-controls="painel-mapa" type="button">
+      Mapa <span class="aba-n">{len(mapa_centros)}</span></button>
     <button class="aba" id="aba-fontes" role="tab" aria-selected="false"
             aria-controls="painel-fontes" type="button">
       Fontes <span class="aba-n">{len(rendimento or [])}</span></button>
@@ -508,6 +557,10 @@ def gerar_dashboard(itens: list[dict], saude: list[dict] | None = None,
 
   <section id="painel-imoveis" role="tabpanel" aria-labelledby="aba-imoveis">
     <div id="lista" class="lista"></div>
+  </section>
+
+  <section id="painel-mapa" role="tabpanel" aria-labelledby="aba-mapa" hidden>
+    {_painel_mapa(mapa_svg)}
   </section>
 
   <section id="painel-fontes" role="tabpanel" aria-labelledby="aba-fontes" hidden>
@@ -525,6 +578,7 @@ const DADOS = {json_dados};
 const NAO_LOC = {json.dumps(NAO_LOCALIZADO)};
 const PREFS_PADRAO = {json_prefs};
 const BAIRROS_POR_CIDADE = {json_bairros};
+const MAPA_CENTROS = {json_centros};
 const IC = {json.dumps({k: v for k, v in ic.items() if k in ('local', 'externo', 'vazio', 'sol', 'lua', 'foto', 'seta',
                         'estrela', 'descartar', 'restaurar', 'lixeira',
                         'casa', 'mais', 'baixou')}, ensure_ascii=False)};
@@ -722,6 +776,25 @@ function noEscopo(d){{
   return atendePrefs(d);
 }}
 
+/* O MAPA não aplica o recorte de preferência, e isso é de propósito.
+
+   Medido: com o escopo padrão ("Minhas preferências"), 3 dos 12 bairros
+   ficavam com cor e Boa Viagem aparecia com "0 imóveis" -- tendo 104
+   anúncios. O mapa vira uma tela quase toda cinza que parece defeito.
+
+   E é o oposto do que ele serve para fazer: a pergunta do mapa é "onde é mais
+   barato", e a resposta útil quase sempre está FORA dos bairros que você já
+   escolheu. Um mapa que só mostra onde você já olha não informa nada.
+
+   Lixeira e favoritos continuam valendo: descartar é dizer "não quero ver
+   isto", e o mapa não pode reintroduzir pela cor o que a pessoa tirou. */
+function noEscopoMapa(d){{
+  if (escopo === 'lixeira') return descartado(d);
+  if (descartado(d)) return false;
+  if (escopo === 'favoritos') return favorito(d);
+  return true;
+}}
+
 /* ---------- filtros ---------- */
 const selCidade = el('f-cidade'), selBairro = el('f-bairro'), selQuartos = el('f-quartos');
 const selOrdem = el('f-ordem'), inpMin = el('f-min'), inpMax = el('f-max'), inpBusca = el('f-busca');
@@ -748,9 +821,15 @@ Object.values(chips).forEach(c => c.addEventListener('click', () => {{
   pintarPulso();  // o pulso espelha os chips: os dois têm de contar a mesma coisa
 }}));
 
-function filtrar(){{
+/* `ignorarLocal` existe para o mapa: o mapa É o seletor de bairro, e pintar
+   só o bairro já escolhido tornaria a comparação impossível -- todo o resto
+   viraria cinza no instante da escolha. O mapa pinta com o recorte inteiro
+   MENOS cidade/bairro; a lista, com tudo. */
+function filtrar(paraMapa){{
   const qMin = parseInt(selQuartos.value || '0', 10);
-  const cid = selCidade.value, bai = selBairro.value;
+  const cid = paraMapa ? '' : selCidade.value;
+  const bai = paraMapa ? '' : selBairro.value;
+  const dentroDoEscopo = paraMapa ? noEscopoMapa : noEscopo;
   const mn = inpMin.value ? parseFloat(inpMin.value) : null;
   const mx = inpMax.value ? parseFloat(inpMax.value) : null;
   const q = (inpBusca.value || '').trim().toLowerCase();
@@ -759,7 +838,7 @@ function filtrar(){{
   const soMulti = chips.multi.getAttribute('aria-pressed') === 'true';
 
   return DADOS.filter(d => {{
-    if (!noEscopo(d)) return false;
+    if (!dentroDoEscopo(d)) return false;
     if (soNovos && !d.novo) return false;
     if (soQuedas && !d.queda) return false;
     if (soMulti && d.qtdFontes < 2) return false;
@@ -1225,6 +1304,9 @@ function atualizarContagem(){{
 function render(){{
   gravarUrl();
   contarFiltros();
+  // o mapa é outra vista do MESMO recorte; deixá-lo de fora faria as duas
+  // abas discordarem sobre quantos imóveis existem
+  pintarMapa();
   const res = ordenar(filtrar());
   contagem.textContent = contar(res.length, DADOS.filter(noEscopo).length);
 
@@ -1368,9 +1450,186 @@ btnObs.addEventListener('click', () => {{
   painelObs.hidden = aberto;
 }});
 
+/* ---------- mapa ----------
+   Pinta cada bairro pelo R$/m² MEDIANO do recorte atual e devolve o clique
+   como filtro. Mediana e não média: uma única cobertura puxa a média do
+   bairro inteiro, e o mapa passaria a dizer que Casa Caiada é cara por causa
+   de um anúncio.
+
+   Corte por QUANTIL, não por faixa fixa de reais: faixa fixa empilharia quase
+   todos os bairros num degrau só, porque os preços da região são próximos.
+   Quantil garante que os cinco degraus sempre separam alguma coisa -- o mapa
+   responde "mais caro que os vizinhos", que é a pergunta de quem procura onde
+   morar. Custo: a cor é relativa ao recorte e muda quando o filtro muda; por
+   isso a legenda diz os extremos em reais.
+
+   Mínimo de 2 anúncios por bairro para colorir: com um só, a "mediana" É o
+   anúncio, e um outlier pintaria o bairro inteiro. */
+const MIN_ANUNCIOS_BAIRRO = 2;
+const mapaSvg = document.querySelector('.mapa-svg');
+const mapaDet = el('mapa-detalhe');
+let mapaSelecionado = null;
+
+function mediana(v){{
+  if (!v.length) return null;
+  const o = [...v].sort((a,b) => a-b);
+  const m = Math.floor(o.length / 2);
+  return o.length % 2 ? o[m] : (o[m-1] + o[m]) / 2;
+}}
+
+function porBairro(lista){{
+  const por = {{}};
+  for (const d of lista){{
+    if (!d.cidade || !d.bairro) continue;
+    (por[d.cidade + '|' + d.bairro] ||= []).push(d);
+  }}
+  return por;
+}}
+
+function resumoBairro(itens){{
+  return {{
+    n: itens.length,
+    m2: itens.length >= MIN_ANUNCIOS_BAIRRO
+      ? mediana(itens.map(d => d.precoM2).filter(x => x != null)) : null,
+    preco: mediana(itens.map(d => d.preco).filter(x => x != null)),
+  }};
+}}
+
+function pintarMapa(){{
+  if (!mapaSvg) return;
+  const por = porBairro(filtrar(true));
+  const resumo = {{}};
+  for (const [k, itens] of Object.entries(por)) resumo[k] = resumoBairro(itens);
+
+  const paths = mapaSvg.querySelectorAll('.mapa-bairro');
+  const valores = [];
+  paths.forEach(p => {{
+    const v = resumo[p.dataset.b] && resumo[p.dataset.b].m2;
+    if (v != null) valores.push(v);
+  }});
+  valores.sort((a,b) => a-b);
+
+  const degrau = v => {{
+    if (v == null || !valores.length) return '';
+    const i = valores.indexOf(v);
+    const pos = valores.length > 1 ? i / (valores.length - 1) : 0;
+    return 'q' + Math.min(5, Math.floor(pos * 5) + 1);
+  }};
+
+  const cidSel = selCidade.value, baiSel = selBairro.value;
+  paths.forEach(p => {{
+    const partes = p.dataset.b.split('|');
+    const cid = partes[0], bai = partes[1];
+    const info = resumo[p.dataset.b];
+    p.setAttribute('class', 'mapa-bairro');
+    const q = degrau(info && info.m2);
+    if (q) p.classList.add(q);
+    // fora da cidade escolhida o bairro esmaece, mas continua desenhado:
+    // apagar mudaria a forma da região a cada filtro e tirava a referência
+    if (cidSel && cid !== cidSel) p.classList.add('apagado');
+    if (mapaSelecionado === p.dataset.b) p.classList.add('sel');
+    else if (baiSel && bai === baiSel && (!cidSel || cid === cidSel)) p.classList.add('sel');
+
+    const n = info ? info.n : 0;
+    const m2 = info && info.m2;
+    const antigo = p.querySelector('title');
+    if (antigo) antigo.remove();
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    t.textContent = bai + ' — ' + n + (n === 1 ? ' imóvel' : ' imóveis') +
+      (m2 != null ? ' · ' + m2.toFixed(0) + ' R$/m² (mediana)' : '');
+    p.appendChild(t);
+  }});
+
+  const nota = el('mapa-legenda-nota');
+  if (nota){{
+    nota.textContent = valores.length
+      ? valores[0].toFixed(0) + ' a ' + valores[valores.length-1].toFixed(0) + ' R$/m²'
+      : 'sem preço por m² nesta seleção';
+  }}
+  pintarDetalheMapa(resumo);
+}}
+
+/* Rótulo e ponto são geometria, não estado: desenhados uma vez. Recriá-los a
+   cada filtro faria o texto piscar a cada tecla digitada na busca. */
+function rotularMapa(){{
+  if (!mapaSvg) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  for (const chave of Object.keys(MAPA_CENTROS)){{
+    const xy = MAPA_CENTROS[chave];
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', xy[0]); c.setAttribute('cy', xy[1]);
+    c.setAttribute('r', '1.2'); c.setAttribute('class', 'mapa-ponto');
+    mapaSvg.appendChild(c);
+    const t = document.createElementNS(ns, 'text');
+    t.setAttribute('x', xy[0]); t.setAttribute('y', xy[1] - 3);
+    t.setAttribute('class', 'mapa-rotulo');
+    t.textContent = chave.split('|')[1];
+    mapaSvg.appendChild(t);
+  }}
+}}
+
+/* Tocar no bairro abre esta faixa em vez de trocar de aba na hora: no celular,
+   mudar de tela ao encostar num polígono de 20px transforma erro de mira em
+   navegação indesejada. Aqui a pessoa vê o que escolheu e decide. */
+function pintarDetalheMapa(resumo){{
+  if (!mapaDet) return;
+  if (!mapaSelecionado){{ mapaDet.hidden = true; mapaDet.innerHTML = ''; return; }}
+  const partes = mapaSelecionado.split('|');
+  const cid = partes[0], bai = partes[1];
+  const info = resumo[mapaSelecionado] || {{n: 0, m2: null, preco: null}};
+  const jaFiltrado = selBairro.value === bai &&
+    (!selCidade.value || selCidade.value === cid);
+  const eraOculto = mapaDet.hidden;
+  mapaDet.hidden = false;
+  mapaDet.innerHTML =
+    '<h3>' + esc(bai) + '</h3>' +
+    '<p>' + esc(cid) + ' · ' + info.n + (info.n === 1 ? ' imóvel' : ' imóveis') +
+    (info.preco != null ? ' · mediana ' + fmtBRL(info.preco) : '') +
+    (info.m2 != null ? ' · ' + info.m2.toFixed(0) + ' R$/m²' : '') + '</p>' +
+    '<button class="btn-ofertas" id="mapa-ir" type="button">' +
+    (jaFiltrado ? 'Ver os imóveis' : 'Filtrar por ' + esc(bai)) + '</button>';
+  // trazer para a tela ao ABRIR, não a cada repintura: rolar sozinho toda vez
+  // que o filtro muda tiraria a página do lugar enquanto se digita na busca
+  if (eraOculto && mapaDet.scrollIntoView){{
+    mapaDet.scrollIntoView({{block: 'nearest', behavior: 'smooth'}});
+  }}
+  el('mapa-ir').addEventListener('click', () => {{
+    /* O mapa mostra a região inteira; a lista, por padrão, só os bairros da
+       preferência. Sem esta troca, tocar em Boa Viagem no mapa não fazia
+       NADA: preencherBairros() monta as opções a partir do escopo, o bairro
+       não estava lá, e `selBairro.value = bai` era descartado em silêncio --
+       a pessoa via a aba trocar e o filtro continuar igual. Se o bairro
+       escolhido está fora da preferência, o escopo vai junto. */
+    if (escopo !== 'lixeira' && escopo !== 'favoritos'){{
+      const daqui = DADOS.filter(d => d.cidade === cid && d.bairro === bai
+                                      && !descartado(d));
+      if (daqui.length && !daqui.some(atendePrefs)) trocarEscopo('outros');
+    }}
+    selCidade.value = cid;
+    preencherBairros();
+    selBairro.value = bai;
+    render();
+    mostrarAba('imoveis');
+  }});
+}}
+
+if (mapaSvg){{
+  rotularMapa();
+  mapaSvg.addEventListener('click', ev => {{
+    const p = ev.target.closest('.mapa-bairro');
+    if (!p) return;
+    // segundo toque no mesmo bairro fecha a faixa: sem isto não há como
+    // desfazer a escolha sem acertar o fundo entre dois polígonos
+    mapaSelecionado = mapaSelecionado === p.dataset.b ? null : p.dataset.b;
+    pintarMapa();
+  }});
+}}
+
 /* ---------- abas ---------- */
-const abas = {{imoveis: el('aba-imoveis'), fontes: el('aba-fontes')}};
-const paineis = {{imoveis: el('painel-imoveis'), fontes: el('painel-fontes')}};
+const abas = {{imoveis: el('aba-imoveis'), mapa: el('aba-mapa'),
+              fontes: el('aba-fontes')}};
+const paineis = {{imoveis: el('painel-imoveis'), mapa: el('painel-mapa'),
+                 fontes: el('painel-fontes')}};
 const filtrosEl = el('filtros');
 
 function mostrarAba(nome, gravar = true){{
@@ -1378,9 +1637,13 @@ function mostrarAba(nome, gravar = true){{
     b.setAttribute('aria-selected', String(k === nome));
     paineis[k].hidden = k !== nome;
   }}
-  // filtro de imóvel não filtra fonte: some junto com o catálogo
-  el('barra-filtros').hidden = nome !== 'imoveis';
-  if (nome !== 'imoveis') abrirFiltros(false);
+  // O filtro vale para o mapa também: lá o recorte é o que dá a cor. Só a
+  // aba de Fontes não tem o que filtrar -- ela fala de coleta, não de imóvel.
+  el('barra-filtros').hidden = nome === 'fontes';
+  if (nome === 'fontes') abrirFiltros(false);
+  // repinta ao ENTRAR: enquanto o painel está hidden o SVG não tem layout, e
+  // pintar num elemento sem caixa já rendeu mapa em branco neste projeto
+  if (nome === 'mapa') pintarMapa();
   if (gravar) gravarUrl();
 }}
 Object.entries(abas).forEach(([k, b]) =>
@@ -1407,7 +1670,9 @@ function gravarUrl(){{
     .filter(([, c]) => c.getAttribute('aria-pressed') === 'true').map(([k]) => k);
   if (marcados.length) p.set('sinais', marcados.join(','));
   if (escopo !== 'meus') p.set('escopo', escopo);
-  if (abas.fontes.getAttribute('aria-selected') === 'true') p.set('aba', 'fontes');
+  for (const nome of ['mapa', 'fontes']){{
+    if (abas[nome].getAttribute('aria-selected') === 'true') p.set('aba', nome);
+  }}
   const s = p.toString();
   // Abrir por duplo clique (file://) ou de um data: URL dá origem nula, e aí
   // replaceState levanta SecurityError. Sem a guarda, a exceção sobe pelo
@@ -1435,7 +1700,8 @@ function lerUrl(){{
   }}
   const marcados = (p.get('sinais') || '').split(',').filter(Boolean);
   marcados.forEach(k => chips[k] && chips[k].setAttribute('aria-pressed', 'true'));
-  mostrarAba(p.get('aba') === 'fontes' ? 'fontes' : 'imoveis', false);
+  const aba0 = p.get('aba');
+  mostrarAba(abas[aba0] ? aba0 : 'imoveis', false);
 }}
 
 lerUrl();

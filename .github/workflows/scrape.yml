@@ -61,11 +61,16 @@ jobs:
       - name: Rodar o monitor
         run: python main.py
 
-      - name: Persistir banco/planilha no repositório
+      - name: Persistir banco/planilha/contornos no repositório
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # geo/bairros.json entra junto: o cache de contornos ACUMULA e só
+          # serve se sobreviver ao fim do runner. Sem ele aqui, cada rodada
+          # consultaria o Overpass do zero -- carga gratuita num serviço
+          # voluntário, que é exatamente o que o cache existe para evitar.
           git add saida/apartamentos.db saida/apartamentos.xlsx
+          git add geo/bairros.json 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "Sem mudanças pra commitar"
             exit 0

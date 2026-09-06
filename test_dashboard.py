@@ -278,3 +278,92 @@ def test_campo_ausente_no_imovel_nao_exclui_da_preferencia(ambiente):
     trecho = html[html.index("function atendePrefs"):html.index("/* Descartado sai")]
     for campo in ("d.preco != null", "d.quartos != null", "d.area != null"):
         assert campo in trecho, f"{campo} precisa ser checado antes de excluir"
+
+
+# --- aba de mapa -------------------------------------------------------
+# "gostaria de que tivesse uma aba de mapa onde a busca e visualização seja
+# pelo mapa", com a decisão de manter o dashboard offline (SVG no arquivo,
+# sem tiles).
+
+def _com_geo(monkeypatch, cache):
+    import geo
+    monkeypatch.setattr(geo, "carregar", lambda: cache)
+
+
+def _quadrado(lon, lat, r=0.004):
+    return [[lon - r, lat - r], [lon + r, lat - r],
+            [lon + r, lat + r], [lon - r, lat + r], [lon - r, lat - r]]
+
+
+def test_aba_de_mapa_existe(ambiente, monkeypatch):
+    _com_geo(monkeypatch, {})
+    html = _html(ambiente, [_imovel()])
+    assert 'id="aba-mapa"' in html and 'id="painel-mapa"' in html
+
+
+def test_sem_contornos_o_mapa_explica_em_vez_de_ficar_branco(ambiente, monkeypatch):
+    _com_geo(monkeypatch, {})
+    html = _html(ambiente, [_imovel()])
+    assert "mapa-vazio" in html
+    assert "geo/bairros.json" in html
+    assert 'class="mapa-bairro"' not in html
+
+
+def test_bairro_com_contorno_vira_path(ambiente, monkeypatch):
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    assert 'data-b="Recife|Pina"' in html
+
+
+def test_bairro_sem_anuncio_nesta_rodada_nao_e_desenhado(ambiente, monkeypatch):
+    """O cache ACUMULA entre rodadas. Desenhar tudo que já foi buscado
+    encheria a tela de polígono cinza e faria a região parecer vazia quando o
+    vazio é do recorte, não da cidade."""
+    _com_geo(monkeypatch, {
+        "Recife|Pina": {"anel": _quadrado(-34.885, -8.095)},
+        "Recife|Ipsep": {"anel": _quadrado(-34.930, -8.110)},
+    })
+    html = _html(ambiente, [_imovel()])   # só Pina
+    assert 'data-b="Recife|Pina"' in html
+    assert 'data-b="Recife|Ipsep"' not in html
+
+
+def test_atribuicao_do_openstreetmap_acompanha_a_geometria(ambiente, monkeypatch):
+    """ODbL exige crédito de quem redistribui. Não é formalidade: é a mesma
+    postura que fez o projeto respeitar robots.txt."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    assert "openstreetmap.org/copyright" in html
+    assert "ODbL" in html
+
+
+def test_mapa_nao_carrega_nada_de_fora(ambiente, monkeypatch):
+    """O invariante do projeto: um arquivo só, sem servidor. Tile é requisição
+    em tempo de execução e cairia junto com a rede."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    for proibido in ("leaflet", "tile.openstreetmap", "unpkg.com", "cdn."):
+        assert proibido not in html.lower()
+
+
+def test_mapa_ignora_a_preferencia_mas_respeita_a_lixeira(ambiente, monkeypatch):
+    """Medido: com o escopo padrão, 3 de 12 bairros ficavam com cor e Boa
+    Viagem aparecia com 0 imóveis tendo 104 anúncios. A pergunta do mapa é
+    'onde é mais barato', e a resposta útil mora FORA do que já se escolheu --
+    mas o que foi descartado continua fora."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    assert "function noEscopoMapa" in html
+    corpo = html[html.index("function noEscopoMapa"):]
+    corpo = corpo[:corpo.index("}")]
+    assert "descartado(d)" in corpo
+    assert "atendePrefs" not in corpo
+
+
+def test_ir_para_o_bairro_troca_o_escopo_quando_precisa(ambiente, monkeypatch):
+    """Sem isso, tocar em Boa Viagem no mapa não fazia NADA: preencherBairros
+    monta as opções a partir do escopo, o bairro não estava lá, e a atribuição
+    era descartada em silêncio."""
+    _com_geo(monkeypatch, {"Recife|Pina": {"anel": _quadrado(-34.885, -8.095)}})
+    html = _html(ambiente, [_imovel()])
+    assert "trocarEscopo('outros')" in html
