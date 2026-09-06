@@ -45,8 +45,20 @@ OVERPASS = "https://overpass-api.de/api/interpreter"
 # Uma consulta por bairro, com pausa. O Overpass é infraestrutura voluntária
 # e pede uso comedido; como o cache torna cada bairro uma busca única na vida
 # do projeto, a lentidão aqui não custa nada.
-PAUSA_S = 2.0
+#
+# 5s, não 2s: medido na rodada 64, com pausa de 2s o servidor devolveu 429
+# (Too Many Requests) em 8 dos 11 fracassos e 504 nos outros. A instância
+# pública mantém poucos slots simultâneos e enfileira o resto -- 2s era
+# rápido demais e a rodada gastou 8min25s para trazer 12 polígonos.
+PAUSA_S = 5.0
 TIMEOUT_S = 60
+
+# Orçamento de tempo do passo inteiro. É a garantia que faltava: a rodada de
+# COLETA não pode ficar refém de um serviço acessório. Na rodada 64 o mapa
+# sozinho triplicou a duração (4min37s -> 12min57s) sem nada avisando. O
+# cache acumula, então parar no meio não perde trabalho -- o que não coube
+# hoje entra na próxima.
+TETO_SEGUNDOS = 120
 
 
 def carregar() -> dict:
@@ -231,17 +243,40 @@ def atualizar(pares: list[tuple[str, str]], abrir=None, teto: int = 25) -> dict:
 
     buscados = 0
     falhas = 0
+    recusas_seguidas = 0
+    comeco = time.monotonic()
+
     for cidade, bairro in faltam[:teto]:
+        # O orçamento de tempo é a garantia que faltava: a rodada de COLETA
+        # não pode ficar refém de um serviço acessório. Na rodada 64 o mapa
+        # sozinho triplicou a duração (4min37s -> 12min57s) e nada avisou.
+        if abrir is None and time.monotonic() - comeco > TETO_SEGUNDOS:
+            log.info("[geo] orçamento de tempo esgotado; o resto fica para a "
+                     "próxima rodada")
+            break
+
         anel, respondeu = buscar_diag(cidade, bairro, abrir=abrir)
         buscados += 1
         if abrir is None:
             time.sleep(PAUSA_S)
+
         if not respondeu:
             # Consulta que não respondeu não vira veredito: gravar ausência
             # aqui apagaria o bairro do mapa para sempre por causa de um
             # Overpass fora do ar. Fica de fora do cache e volta na próxima.
             falhas += 1
+            recusas_seguidas += 1
+            # Três seguidas é o servidor mandando ir embora. Insistir seria
+            # justamente a carga alheia que este cache existe para evitar --
+            # e, medido na rodada 64, também é inútil: depois do primeiro 429
+            # vieram mais sete.
+            if recusas_seguidas >= 3:
+                log.warning("[geo] o Overpass recusou 3 consultas seguidas; "
+                            "parando por hoje")
+                break
             continue
+
+        recusas_seguidas = 0
         # Ausência CONFIRMADA, essa sim, é gravada: bairro que o OSM não tem
         # não pode ser perguntado de novo a cada rodada.
         cache[chave(cidade, bairro)] = (
@@ -249,11 +284,14 @@ def atualizar(pares: list[tuple[str, str]], abrir=None, teto: int = 25) -> dict:
             else {"anel": None, "centro": None}
         )
 
-    achados = sum(1 for c, b in faltam[:teto]
-                  if cache.get(chave(c, b), {}).get("anel"))
-    restam = max(0, len(faltam) - teto) + falhas
-    log.info(f"[geo] {buscados} bairro(s) consultado(s), {achados} com "
-             f"polígono" + (f", {falhas} sem resposta" if falhas else "") +
-             f"; faltam {restam} para a próxima")
+    achados = sum(1 for c, b in faltam if cache.get(chave(c, b), {}).get("anel"))
+    # O que falta é o que continua fora do cache -- inclusive o que nem chegou
+    # a ser tentado por causa do teto ou da parada. Contar só as falhas daria
+    # um número otimista e esconderia quanto ainda há pela frente.
+    restam = sum(1 for c, b in faltam if chave(c, b) not in cache)
+    log.info(f"[geo] {buscados} bairro(s) consultado(s) em "
+             f"{time.monotonic() - comeco:.0f}s, {achados} com polígono"
+             + (f", {falhas} sem resposta" if falhas else "")
+             + f"; faltam {restam} para a próxima")
     salvar(cache)
     return cache

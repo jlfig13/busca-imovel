@@ -391,6 +391,14 @@ def urls_com_taxa_conhecida(urls: list[str]) -> set[str]:
     Com o custo agora grudento (ver _consolidar_custo), o que é lido uma vez
     fica -- então a cobertura passa a acumular entre rodadas em vez de
     recomeçar.
+
+    Condomínio ZERO não conta como conhecido. O Portal CRECI imprime
+    "Condomínio R$ 0,00" em todo card; o parser passou a tratar esse zero
+    como "não informado", mas as linhas gravadas ANTES dessa correção ficaram
+    com 0.0 no banco -- e, com `IS NOT NULL`, viravam "taxa conhecida" para
+    sempre. Medido na rodada 64: dos 29 anúncios do CRECI só 9 chegaram a ser
+    visitados, e 28 seguiam marcados como completos com condomínio zerado.
+    Zero é ausência de leitura, não leitura de ausência.
     """
     if not urls:
         return set()
@@ -398,7 +406,7 @@ def urls_com_taxa_conhecida(urls: list[str]) -> set[str]:
     marcadores = ",".join("?" * len(urls))
     achados = {
         r[0] for r in conn.execute(
-            f"SELECT url FROM imoveis WHERE condominio IS NOT NULL "
+            f"SELECT url FROM imoveis WHERE COALESCE(condominio, 0) > 0 "
             f"AND url IN ({marcadores})", urls)
     }
     conn.close()

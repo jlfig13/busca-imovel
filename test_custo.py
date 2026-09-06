@@ -275,3 +275,23 @@ def test_condominio_de_verdade_continua_fechando_o_custo():
     assert c["condominio"] == 480.0
     assert c["custo_completo"] is True
     assert c["custo_mensal_total"] == 3100.0
+
+
+def test_condominio_zero_no_banco_nao_conta_como_taxa_conhecida(banco):
+    """O mesmo bug do card, agora na versão gravada.
+
+    As linhas escritas ANTES da correção do parser ficaram com condominio =
+    0.0. Com `IS NOT NULL`, elas viravam "taxa já conhecida" e o detalhe nunca
+    mais era visitado -- a correção ficava travada pelo dado velho que ela
+    mesma veio consertar. Medido na rodada 64: só 9 visitas para 29 anúncios
+    do CRECI, e 28 seguiam completos com condomínio zerado.
+    """
+    fontes = {"Chaves na Mão Olinda"}
+    banco.salvar_execucao([
+        _anuncio(url="zero", condominio=0.0),
+        _anuncio(url="real", condominio=500.0, custo_mensal_total=2000.0),
+    ], fontes_confiaveis=fontes)
+
+    conhecidas = banco.urls_com_taxa_conhecida(["zero", "real"])
+    assert "real" in conhecidas, "taxa lida de verdade continua dispensando visita"
+    assert "zero" not in conhecidas, "zero é ausência de leitura, não leitura de ausência"

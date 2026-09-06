@@ -150,3 +150,35 @@ def test_ausencia_confirmada_e_gravada(tmp_path, monkeypatch):
     monkeypatch.setattr(geo, "CAMINHO", str(tmp_path / "b.json"))
     cache = geo.atualizar([("Recife", "Pina")], abrir=lambda c: '{"elements": []}')
     assert cache[geo.chave("Recife", "Pina")]["anel"] is None
+
+
+def test_para_apos_tres_recusas_seguidas(tmp_path, monkeypatch):
+    """Insistir depois de um 429 é a carga alheia que o cache existe para
+    evitar -- e, medido na rodada 64, também é inútil: depois do primeiro
+    429 vieram mais sete."""
+    monkeypatch.setattr(geo, "CAMINHO", str(tmp_path / "b.json"))
+    tentativas = []
+
+    def recusa(_corpo):
+        tentativas.append(1)
+        raise OSError("HTTP Error 429: Too Many Requests")
+
+    pares = [("Recife", f"B{i}") for i in range(10)]
+    geo.atualizar(pares, abrir=recusa)
+    assert len(tentativas) == 3, f"parou em {len(tentativas)}, devia parar em 3"
+
+
+def test_uma_resposta_boa_zera_a_contagem_de_recusas(tmp_path, monkeypatch):
+    """Falha isolada não pode encerrar a rodada: só a sequência é sinal."""
+    monkeypatch.setattr(geo, "CAMINHO", str(tmp_path / "b.json"))
+    n = {"i": 0}
+
+    def alterna(_corpo):
+        n["i"] += 1
+        if n["i"] % 2:
+            raise OSError("504")
+        return '{"elements": []}'
+
+    pares = [("Recife", f"B{i}") for i in range(8)]
+    geo.atualizar(pares, abrir=alterna)
+    assert n["i"] == 8, "alternando falha e sucesso, nunca há 3 seguidas"
