@@ -381,6 +381,64 @@ def resumo_fontes(execucao_id: int) -> list[dict]:
     return resultado
 
 
+def urls_com_taxa_conhecida(urls: list[str]) -> set[str]:
+    """URLs cujo condomínio já foi lido numa rodada anterior.
+
+    Existe para o scraper não gastar as visitas à página de detalhe com quem
+    já tem a taxa. Sem isso a seleção pegava sempre os mesmos primeiros N da
+    lista e a cobertura nunca avançava: 13 de 81 anúncios, rodada após rodada.
+
+    Com o custo agora grudento (ver _consolidar_custo), o que é lido uma vez
+    fica -- então a cobertura passa a acumular entre rodadas em vez de
+    recomeçar.
+    """
+    if not urls:
+        return set()
+    conn = conectar()
+    marcadores = ",".join("?" * len(urls))
+    achados = {
+        r[0] for r in conn.execute(
+            f"SELECT url FROM imoveis WHERE condominio IS NOT NULL "
+            f"AND url IN ({marcadores})", urls)
+    }
+    conn.close()
+    return achados
+
+
+def _consolidar_custo(item: dict, guardado: tuple | None) -> None:
+    """Faz o custo gravado ser SEMPRE a soma das partes conhecidas.
+
+    O UPSERT preserva as partes com COALESCE (condomínio e IPTU vindos de uma
+    visita anterior à página do anúncio) mas sobrescrevia o TOTAL com o valor
+    da rodada atual -- que, quando o detalhe não foi revisitado, é só o aluguel
+    do card. Resultado medido em 05/09/2026: um anúncio com partes
+    1500+170+171 gravado como 1500, e um evento de queda de R$ 341 que nunca
+    aconteceu, poluindo justamente a série de preço.
+
+    A regra: taxa conhecida manda. Sem taxa conhecida, o total do card é o
+    melhor que existe e fica como está -- é PISO, não custo, e o selo "Custo
+    parcial" no card já avisa isso.
+    """
+    if not guardado:
+        return
+    g_aluguel, g_cond, g_iptu = guardado
+    aluguel = item.get("aluguel") if item.get("aluguel") is not None else g_aluguel
+    cond = item.get("condominio") if item.get("condominio") is not None else g_cond
+    iptu = item.get("iptu") if item.get("iptu") is not None else g_iptu
+
+    if aluguel is None or cond is None:
+        return
+
+    soma = aluguel + cond + (iptu or 0)
+    declarado = item.get("custo_mensal_total") or 0
+    item["aluguel"], item["condominio"], item["iptu"] = aluguel, cond, iptu
+    # o declarado só vence quando é MAIOR: cobre o anúncio que informa um
+    # total já com centavos ou com taxa extra que não veio separada
+    item["custo_mensal_total"] = max(soma, declarado)
+    item["preco"] = item["custo_mensal_total"]
+    item["custo_completo"] = True
+
+
 def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None,
                     execucao_id: int | None = None) -> list[dict]:
     """Grava os itens encontrados na execução de hoje, atualiza
@@ -411,10 +469,15 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
     for item in itens:
         cur.execute(
             """SELECT primeiro_visto, custo_mensal_total, preco, descricao_hash,
-                      imobiliaria, COALESCE(status,'ATIVO')
+                      imobiliaria, COALESCE(status,'ATIVO'),
+                      aluguel, condominio, iptu
                FROM imoveis WHERE url = ?""", (item["url"],))
         row = cur.fetchone()
         item["descricao_hash"] = _hash_texto(item.get("descricao"))
+
+        # ANTES de comparar preços: senão o total sobrescrito vira um evento
+        # de queda que nunca aconteceu.
+        _consolidar_custo(item, (row[6], row[7], row[8]) if row else None)
 
         if row:
             primeiro_visto = row[0]
@@ -511,12 +574,6 @@ def salvar_execucao(itens: list[dict], fontes_confiaveis: set[str] | None = None
     conn.commit()
     conn.close()
     return itens
-
-
-# Anúncio INATIVO mais velho que isto é removido, junto com seus eventos.
-# 180 dias porque a análise de mercado usa janela de 90 dias e a detecção de
-# republicação olha 90 -- o dobro dá folga para as duas sem guardar lixo.
-DIAS_PARA_PODA = 180
 
 
 def atualizar_fotos(fotos_por_url: dict[str, list]) -> int:
@@ -635,36 +692,43 @@ def rendimento_por_fonte(ultimas: int = 10) -> list[dict]:
 
 
 def manutencao(vacuum: bool = False) -> dict:
-    """Poda anúncios inativos antigos e, opcionalmente, compacta o banco.
+    """Enxuga o banco SEM tocar no histórico analítico.
 
-    O banco é comitado no repositório a cada rodada e SQLite é binário: cada
-    commit reescreve o arquivo inteiro. Com cadência diária e sem poda, o
-    repositório ganha centenas de KB por dia de histórico git irrecuperável.
+    O banco é comitado no repositório a cada rodada e SQLite é binário, então
+    o que cresce sem controle vira peso permanente no git. Mas a versão
+    anterior desta função resolvia isso do jeito errado: apagava a linha em
+    `imoveis` E os `evento` do anúncio inativo. Medido em 05/09/2026, isso
+    levaria junto 591 eventos e 7 das 17 mudanças de preço já registradas --
+    41% de todo o sinal analítico do projeto. A poda nunca tinha disparado
+    (corte de 180 dias, projeto com 17), então o estrago era latente.
 
-    Só remove o que está INATIVO há mais de DIAS_PARA_PODA -- imóvel ativo,
-    suspeito ou recém-desaparecido fica. E preserva a linha em `imovel` se ela
-    ainda tiver outro anúncio vivo: apagar o anúncio não pode apagar o imóvel.
+    A regra agora separa as duas naturezas do dado:
+
+    - APRESENTAÇÃO (fotos, descrição): serve ao card que está na tela. Anúncio
+      fora do ar não tem card, e as URLs de foto dos portais expiram de
+      qualquer jeito. É o que ocupa espaço: 291 KB de fotos e 113 KB de
+      descrição, sendo 148 KB em anúncios que já saíram do ar.
+    - HISTÓRICO (preço, área, quartos, bairro, datas, eventos): é o produto
+      analítico. Não se apaga, nem depois de anos -- uma linha sem fotos nem
+      descrição custa ~200 bytes, e é dela que sai qualquer análise de
+      valorização por bairro.
+
+    Se o anúncio reaparecer, a próxima rodada repõe fotos e descrição: o
+    UPSERT usa COALESCE(excluded.fotos, imoveis.fotos), então valor novo
+    sempre vence o nulo.
     """
-    limite = (date.today() - timedelta(days=DIAS_PARA_PODA)).isoformat()
     conn = conectar()
     cur = conn.cursor()
 
-    alvos = [r[0] for r in cur.execute(
-        """SELECT url FROM imoveis
-           WHERE status = ? AND COALESCE(ultima_confirmacao, ultimo_visto) < ?""",
-        (INATIVO, limite),
-    )]
+    cur.execute(
+        """UPDATE imoveis SET fotos = NULL, descricao = NULL
+           WHERE status = ? AND (fotos IS NOT NULL OR descricao IS NOT NULL)""",
+        (INATIVO,),
+    )
+    limpos = cur.rowcount
 
-    if alvos:
-        marcadores = ",".join("?" * len(alvos))
-        cur.execute(f"DELETE FROM evento WHERE url IN ({marcadores})", alvos)
-        cur.execute(f"DELETE FROM imovel_anuncio WHERE url IN ({marcadores})", alvos)
-        cur.execute(f"DELETE FROM imoveis WHERE url IN ({marcadores})", alvos)
-        # imóvel que ficou sem nenhum anúncio some também
-        cur.execute(
-            "DELETE FROM imovel WHERE id NOT IN "
-            "(SELECT DISTINCT imovel_id FROM imoveis WHERE imovel_id IS NOT NULL)"
-        )
+    # `imovel` e `imovel_anuncio` são reconstruídos a cada rodada por
+    # consolidar_imoveis, então não acumulam -- não há o que podar aqui.
     conn.commit()
 
     tamanho_antes = os.path.getsize(config.ARQUIVO_DB)
@@ -675,14 +739,15 @@ def manutencao(vacuum: bool = False) -> dict:
     tamanho_depois = os.path.getsize(config.ARQUIVO_DB)
 
     r = {
-        "podados": len(alvos),
+        "limpos": limpos,
         "kb_antes": tamanho_antes // 1024,
         "kb_depois": tamanho_depois // 1024,
     }
-    if alvos or vacuum:
+    if limpos or vacuum:
         log.info(
-            f"Manutenção: {r['podados']} anúncio(s) inativo(s) removido(s), "
-            f"banco {r['kb_antes']} KB -> {r['kb_depois']} KB"
+            f"Manutenção: apresentação limpa em {limpos} anúncio(s) fora do ar "
+            f"(histórico preservado), banco {r['kb_antes']} KB -> "
+            f"{r['kb_depois']} KB"
         )
     return r
 

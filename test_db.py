@@ -337,39 +337,58 @@ def test_rendimento_separa_exclusivo_de_redundante(banco):
     assert banco.rendimento_por_fonte()[-1]["fonte"] == "Só Aqui"
 
 
-def test_manutencao_preserva_anuncio_ativo(banco):
+def test_manutencao_nao_toca_em_anuncio_ativo(banco):
     banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
     r = banco.manutencao()
-    assert r["podados"] == 0
+    assert r["limpos"] == 0
     conn = banco.conectar()
     assert conn.execute("SELECT COUNT(*) FROM imoveis").fetchone()[0] == 1
     conn.close()
 
 
-def test_manutencao_poda_inativo_antigo(banco):
-    from datetime import date, timedelta
-    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
-    velho = (date.today() - timedelta(days=banco.DIAS_PARA_PODA + 200)).isoformat()
+def test_manutencao_limpa_apresentacao_do_que_saiu_do_ar(banco):
+    """Fotos e descrição servem ao card. Anúncio fora do ar não tem card, e as
+    URLs de foto dos portais expiram de qualquer jeito."""
+    banco.salvar_execucao(
+        [_item(descricao="Apartamento amplo", fotos=["https://cdn/1.jpg"])],
+        fontes_confiaveis={"Zap"})
     conn = banco.conectar()
-    conn.execute("UPDATE imoveis SET status=?, ultima_confirmacao=? WHERE url='u1'",
-                 (banco.INATIVO, velho))
+    conn.execute("UPDATE imoveis SET status=? WHERE url='u1'", (banco.INATIVO,))
     conn.commit(); conn.close()
 
-    r = banco.manutencao()
-    assert r["podados"] == 1
+    assert banco.manutencao()["limpos"] == 1
     conn = banco.conectar()
-    assert conn.execute("SELECT COUNT(*) FROM imoveis").fetchone()[0] == 0
-    # eventos do anúncio removido também saem
-    assert conn.execute("SELECT COUNT(*) FROM evento WHERE url='u1'").fetchone()[0] == 0
+    fotos, desc = conn.execute(
+        "SELECT fotos, descricao FROM imoveis WHERE url='u1'").fetchone()
     conn.close()
+    assert fotos is None and desc is None
 
 
-def test_manutencao_nao_poda_inativo_recente(banco):
-    from datetime import date, timedelta
-    banco.salvar_execucao([_item()], fontes_confiaveis={"Zap"})
-    recente = (date.today() - timedelta(days=10)).isoformat()
+def test_manutencao_preserva_o_historico_analitico(banco):
+    """O CONTRÁRIO do que a versão anterior fazia.
+
+    Até 05/09/2026 a manutenção apagava a linha em `imoveis` E os `evento` do
+    anúncio inativo. Medido no banco real, isso levaria junto 591 eventos e 7
+    das 17 mudanças de preço registradas -- 41% do sinal analítico. Nunca
+    tinha disparado porque o corte era de 180 dias e o projeto tinha 17.
+    """
+    banco.salvar_execucao([_item(preco=2000.0)], fontes_confiaveis={"Zap"})
+    banco.salvar_execucao([_item(preco=1800.0)], fontes_confiaveis={"Zap"})
     conn = banco.conectar()
-    conn.execute("UPDATE imoveis SET status=?, ultima_confirmacao=? WHERE url='u1'",
-                 (banco.INATIVO, recente))
+    antes = conn.execute(
+        "SELECT COUNT(*) FROM evento WHERE tipo=?",
+        (banco.EV_PRECO,) if hasattr(banco, "EV_PRECO") else ("PRECO_ALTERADO",),
+    ).fetchone()[0]
+    conn.execute("UPDATE imoveis SET status=? WHERE url='u1'", (banco.INATIVO,))
     conn.commit(); conn.close()
-    assert banco.manutencao()["podados"] == 0
+    assert antes >= 1, "o cenário precisa ter registrado a mudança de preço"
+
+    banco.manutencao()
+
+    conn = banco.conectar()
+    assert conn.execute("SELECT COUNT(*) FROM imoveis WHERE url='u1'").fetchone()[0] == 1, \
+        "a linha é o histórico: preço, área, bairro e datas"
+    depois = conn.execute(
+        "SELECT COUNT(*) FROM evento WHERE url='u1'").fetchone()[0]
+    conn.close()
+    assert depois >= antes, "evento é append-only: manutenção não apaga histórico"

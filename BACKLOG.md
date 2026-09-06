@@ -2,6 +2,88 @@
 
 ---
 
+## Fase 13 — Design system e marca (05/09/2026)
+
+- [x] **Paleta trocada por decisão de produto.** Azul #0EA5E9 (ação e
+  identidade), turquesa #14B8A6, laranja #FB923C, amarelo #FBBF24, neutros
+  frios. Substituem azul-Atlântico #10495B, ocre-Olinda #C2703D e neutros de
+  viés quente. *Motivo registrado no `design.py`:* o projeto deixou de ser
+  ferramenta pessoal e passou a ser algo que outra pessoa usa com o critério
+  dela — a paleta acompanha essa mudança de personalidade.
+
+- [x] **Símbolo em SVG desenhado à mão** (`marca/simbolo.svg`, 1,7 KB).
+  *Descartado:* vetorizar o PNG com `vtracer` (instalado e testado). Um traço
+  automático gera centenas de caminhos, pesa dezenas de KB e não permite
+  controlar cor por tema. Três formas e um gradiente leem melhor a 16px.
+
+- [x] **KPI em tile com ícone, três em vez de seis.** Seis cartões empilhavam
+  em quatro linhas num telefone. Os três que ficam respondem "o que mudou
+  desde ontem"; contexto foi para linha compacta.
+
+- [x] **"Novo" de azul para turquesa**, para o azul ficar reservado à ação.
+
+- [ ] **Cena completa da marca** (skyline + Olinda) ainda não vetorizada. Faz
+  sentido como asset de divulgação, não no dashboard: seria 100-300 KB num
+  arquivo que é único e precisa abrir no celular.
+
+---
+
+## Fase 12 — Custo total consistente (05/09/2026)
+
+Relato: "a fonte da chave da mão não tá somando aluguel + condomínio e taxas".
+
+- [x] **O parser somava certo; o defeito era da gravação.** O UPSERT preserva
+  as partes com `COALESCE` mas sobrescrevia o total com o valor da rodada
+  atual — só o aluguel do card, quando o detalhe não foi revisitado. A linha
+  ficava com condomínio 170 e IPTU 171 e total 1.500.
+
+- [x] **Isso fabricava evento de preço.** Medido: um `1841 -> 1500` no
+  histórico, uma queda de R$ 341 que nunca existiu, em 1 dos 17 eventos de
+  preço do banco. O mesmo histórico que a Fase 11 acabou de proteger de ser
+  apagado estava sendo poluído na entrada. `_consolidar_custo()` roda antes da
+  comparação, então o evento falso deixa de nascer.
+  *Regra:* taxa conhecida manda; sem taxa, o total do card fica como está —
+  é piso, não custo, e o selo "Custo parcial" já diz isso na tela.
+
+- [x] **Cobertura das visitas ao detalhe não convergia.** 13 de 81 anúncios, e
+  sempre os mesmos 13: a seleção era `lista[:25]`. Agora desconta quem já tem
+  taxa conhecida e ordena por mais barato primeiro; com o custo grudento, a
+  cobertura acumula entre rodadas. Teto 25 -> 45.
+  *Descartado:* visitar os 81 toda rodada. São 12 rodadas por dia num site só,
+  e a acumulação resolve sem essa carga.
+
+---
+
+## Fase 11 — Manutenção sem perder histórico (05/09/2026)
+
+- [x] **A poda existente apagava o histórico analítico.** `manutencao()` fazia
+  `DELETE FROM evento` junto com o anúncio inativo. Medido no banco real:
+  disparar levaria 591 eventos e 7 das 17 mudanças de preço — 41% do sinal.
+  Latente, não visível: o corte era 180 dias e o projeto tem 17 de vida.
+  *Registro honesto:* a proposta anterior deste assistente era cortar para
+  30-45 dias, o que teria destruído isso na rodada seguinte. Quem barrou foi o
+  usuário, perguntando pelo dado analítico.
+
+- [x] **Regra nova: separar apresentação de histórico.** Fotos e descrição de
+  anúncio fora do ar viram NULL (o card não existe mais, e as URLs de foto dos
+  portais expiram sozinhas). Linha e eventos ficam para sempre — 200 bytes por
+  anúncio é o preço de poder responder "quanto valorizou este bairro".
+  Medido: 2.108 KB → 1.872 KB, com 1.257 eventos e 915 linhas intactos.
+  Seguro porque o UPSERT usa `COALESCE(excluded.fotos, imoveis.fotos)`: se o
+  anúncio voltar, a rodada repõe.
+
+- [ ] **Histórico em arquivo append-only (Parquet ou CSV por dia).** Ideia do
+  usuário, adiada com motivo. O que faz o repositório crescer não é o formato:
+  é reescrever um binário de 2 MB doze vezes por dia. Um arquivo por dia faz o
+  git guardar só o dado novo. Mas só se paga junto com parar de versionar o
+  `.db` a cada rodada — e aí ele precisa ser reconstruído do histórico no
+  início da rodada, que é a parte cara.
+  *Gatilho medido para fazer:* `.git` passar de 200 MB. Hoje: 5,3 MB após 55
+  commits de dados (~96 KB por commit, porque o git faz delta entre versões do
+  SQLite). Projeção com 12 rodadas/dia: 30 a 75 MB/mês.
+
+---
+
 ## Fase 10 — Filtros livres e preferência do usuário (05/09/2026)
 
 Pedido: escolher faixa de valor, bairros, cidade, quartos e área livremente, e

@@ -19,6 +19,8 @@ import re
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
+import config
+import detalhe_custo
 import galeria
 import utils
 from utils import log
@@ -45,6 +47,7 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
     soup = BeautifulSoup(html, "html.parser")
     padrao_link = site.get("padrao_link_imovel", "/imovel/")
     novos = 0
+    candidatos: list[dict] = []
 
     for a in soup.find_all("a", href=True):
         href = a["href"]
@@ -121,6 +124,16 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
             **custo,
         }
         item["titulo"] = utils.gerar_titulo(item)
+        candidatos.append(item)
+
+    # A página do anúncio ANTES do filtro, como no scraper_playwright: é
+    # justamente o veredito que muda. Sem isto, fonte de card incompleto
+    # entrava com o número da vitrine -- foi o caso relatado da Cristina
+    # Mirele, R$ 1.500 na lista e R$ 3.000 ao abrir.
+    if site.get("custo_no_detalhe"):
+        detalhe_custo.enriquecer(candidatos)
+
+    for item in candidatos:
         veredito, motivos = utils.avaliar_filtro(
             item["preco"], item["quartos"], item["area_m2"], item["cidade"]
         )
@@ -130,7 +143,7 @@ def _extrair_pagina(html: str, site: dict, links_vistos: set, resultados: list) 
             # Não entra na lista principal: sem preço nem forma, é um link
             # com um título. Contabilizado para virar fila de enriquecimento.
             resultados.stats["indeterminados"] += 1
-            log.debug(f"[{site['nome']}] indeterminado ({', '.join(motivos)}): {url_completa}")
+            log.debug(f"[{site['nome']}] indeterminado ({', '.join(motivos)}): {item['url']}")
         else:
             resultados.stats["reprovados"] += 1
 

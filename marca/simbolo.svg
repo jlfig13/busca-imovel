@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
+     aria-label="Monitor de Apartamentos">
+  <!-- Símbolo desenhado à mão, não vetorizado do PNG: um traço automático
+       geraria centenas de caminhos, pesaria dezenas de KB e não permitiria
+       trocar cor por tema. Aqui são 3 formas e um gradiente. -->
+  <defs>
+    <linearGradient id="ma-pin" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Pin: círculo com a ponta embaixo. O raio de 20 e a ponta em y=60
+       mantêm a gota reconhecível a 16px, que é o tamanho do favicon. -->
+  <path fill="url(#ma-pin)"
+        d="M32 4a22 22 0 0 1 15.6 37.6L32 60 16.4 41.6A22 22 0 0 1 32 4Z"/>
+
+  <!-- Casa: telhado e corpo em branco, janela vazada. O vazado (fill-rule)
+       em vez de retângulos escuros faz a casa funcionar sobre qualquer fundo
+       do pin, inclusive se o gradiente mudar. -->
+  <path fill="#fff" fill-rule="evenodd"
+        d="M32 12 48.5 25.4v1.6h-4.5V39a2 2 0 0 1-2 2h-20a2 2 0 0 1-2-2V27h-4.5v-1.6L32 12Z
+           M26.5 27.5v4.2h4.2v-4.2h-4.2Z
+           M33.3 27.5v4.2h4.2v-4.2h-4.2Z
+           M26.5 34.3v4.2h4.2v-4.2h-4.2Z
+           M33.3 34.3v4.2h4.2v-4.2h-4.2Z"/>
+
+  <!-- Lupa: sobreposta ao canto inferior direito, com anel escuro por fora
+       para separar do pin sem depender de sombra. -->
+  <g transform="translate(35.5 33.5)">
+    <circle cx="9" cy="9" r="10.5" fill="#0F2D52"/>
+    <circle cx="9" cy="9" r="8" fill="#fff"/>
+    <circle cx="9" cy="9" r="5.4" fill="#0EA5E9" opacity=".22"/>
+    <path d="M15.4 15.4 21.5 21.5" stroke="#0F2D52" stroke-width="4.2"
+          stroke-linecap="round"/>
+    <path d="M15.4 15.4 20.6 20.6" stroke="#fff" stroke-width="1.6"
+          stroke-linecap="round"/>
+  </g>
+</svg>
