@@ -15,6 +15,51 @@
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
 
+**06/09 (2):** "clico e aparece outras fotos e não a que tá no meu portal".
+
+A foto do card era **a maior lista entre os anúncios** do imóvel consolidado,
+mas o botão "Ver anúncio" abre o **mais barato**. Quando as duas caem em
+portais diferentes, a pessoa clica e vê outro conjunto de fotos. Medido: **9
+dos 53** imóveis multi-fonte. Em dois deles o anúncio linkado até tinha fotos
+— perdia por empate, porque o desempate seguia a ordem interna da lista.
+
+A foto passou a ser a do anúncio que o card abre. A maior lista continua como
+reserva: quando o linkado não tem foto nenhuma, uma imagem do MESMO
+apartamento noutro portal é melhor que o marcador cinza, e o card continua
+abrindo o anúncio certo.
+
+Detalhe de implementação que importa: o cálculo da capa teve de descer para
+DEPOIS da ordenação dos anúncios — é ela que define para onde o botão aponta.
+Verificado sobre o banco de produção: 0 descasados em 57 imóveis multi-fonte.
+
+**06/09:** o preço errado não era de uma fonte — era o padrão.
+
+Relatado no **Portal CRECI**: aluguel R$ 2.500 na tela, e o anúncio traz
+condomínio R$ 1.200 e IPTU R$ 191. Custo real R$ 3.891. Mesma causa da
+Cristina Mirele, noutra fonte.
+
+**Das SETE fontes `cards_inline`, seis mostravam só o aluguel no card** —
+o número na tela estava errado em todas. Ligar `custo_no_detalhe` uma por
+vez, à medida que o erro aparece, é enxugar gelo. O padrão foi invertido:
+`cards_inline` visita o detalhe por padrão, e quem já traz o custo total
+desliga com `"custo_no_detalhe": False`.
+
+O custo disso é contido por três cortes, e o terceiro é o que faz convergir:
+
+1. `_vale_visitar` pula quem já tem custo completo nesta rodada;
+2. `MAX_VISITAS` limita por fonte por rodada;
+3. **`db.urls_com_taxa_conhecida` pula quem já teve a taxa lida antes.** Sem
+   isso o teto seria gasto todo dia nos mesmos anúncios — foi o defeito
+   medido no Chaves na Mão (13 de 81, rodada após rodada). Com o custo
+   grudento, a cobertura ACUMULA.
+
+Junto: `enriquecer` passou a visitar **o mais barato primeiro** (o teto não
+cobre a lista inteira, e o anúncio barato cabe em mais orçamentos) sem
+reordenar a lista de quem chamou — o scraper usa aquela ordem depois.
+
+**Confirmado pelo usuário na tela: as fotos voltaram.** Era o `Referer`
+mesmo, e o `no-referrer` resolveu.
+
 **05/09 (6):** design system aplicado + preço da Cristina Mirele.
 
 **Cristina Mirele: R$ 1.500 na lista, R$ 3.000 ao abrir.** Causa diferente do
@@ -426,7 +471,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 226 testes, ~4s.
+- 236 testes, ~4s.
 - Banco: poda diária de inativos com 180+ dias, VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).
 - `saida/apartamentos.db` e `.xlsx` são commitados pelo workflow a cada

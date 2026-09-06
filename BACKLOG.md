@@ -2,6 +2,43 @@
 
 ---
 
+## Fase 15 — A foto é a do anúncio que o card abre (06/09/2026)
+
+- [x] **Foto e link vinham de anúncios diferentes.** A capa era "a maior
+  lista de fotos entre os anúncios do imóvel"; o botão "Ver anúncio" abre o
+  mais BARATO. Em 9 dos 53 imóveis multi-fonte medidos, eram portais
+  diferentes — a pessoa clicava e via outras fotos. Em dois casos o linkado
+  tinha fotos e perdia por empate, porque o desempate seguia a ordem interna.
+  *Regra nova:* a capa é do anúncio linkado; a maior lista fica como reserva
+  para quando ele não tem foto (imagem do mesmo apartamento noutro portal
+  ainda é melhor que marcador cinza).
+  *Cuidado de implementação:* o cálculo da capa desceu para depois da
+  ordenação dos anúncios — é ela que define o destino do botão.
+  Verificado no banco real: 0 descasados em 57 imóveis multi-fonte.
+
+---
+
+## Fase 14 — Custo no detalhe vira padrão (06/09/2026)
+
+- [x] **O preço errado não era de uma fonte, era o padrão.** Relatado no
+  Portal CRECI (R$ 2.500 na tela; R$ 2.500 + 1.200 de condomínio + 191 de
+  IPTU = R$ 3.891 no anúncio), depois de já ter sido relatado na Cristina
+  Mirele. Das sete fontes `cards_inline`, seis mostravam só o aluguel.
+  `cards_inline` passa a visitar o detalhe POR PADRÃO; quem traz o custo
+  total no card desliga com `"custo_no_detalhe": False`.
+  *Descartado:* ligar fonte a fonte conforme o erro aparece. Cada relato
+  custa uma rodada de ida e volta, e o defeito é o mesmo em todas.
+
+- [x] **A cobertura acumula.** `enriquecer` desconta URLs cuja taxa já foi
+  lida (`db.urls_com_taxa_conhecida`) e visita o mais barato primeiro. Sem o
+  desconto, o teto de visitas era gasto todo dia nos mesmos anúncios — medido
+  no Chaves na Mão: 13 de 81, rodada após rodada.
+
+- [x] **Fotos confirmadas de volta** pelo usuário, na tela. Era o `Referer`
+  bloqueado pelos CDNs dos portais; `no-referrer` resolveu.
+
+---
+
 ## Fase 13 — Design system e marca (05/09/2026)
 
 - [x] **Paleta trocada por decisão de produto.** Azul #0EA5E9 (ação e

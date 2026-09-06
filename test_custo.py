@@ -174,8 +174,13 @@ def test_cards_inline_visita_o_detalhe_quando_configurado(monkeypatch):
     assert chamadas, "a fonte configurada tem de passar pelo detalhe"
 
 
-def test_cards_inline_sem_a_marca_nao_visita_nada(monkeypatch):
-    """Visita é requisição: fonte cujo card já traz o custo não paga isso."""
+def test_cards_inline_visita_o_detalhe_por_padrao(monkeypatch):
+    """A exceção virou regra em 05/09/2026.
+
+    Das sete fontes cards_inline, seis mostravam só o aluguel no card, e o
+    preço na tela estava errado em todas. Ligar uma por vez, à medida que o
+    erro aparecia, é enxugar gelo -- o padrão passou a ser visitar.
+    """
     import scraper_cards_inline as sci
     chamadas = []
     monkeypatch.setattr(sci.detalhe_custo, "enriquecer",
@@ -185,4 +190,60 @@ def test_cards_inline_sem_a_marca_nao_visita_nada(monkeypatch):
     site = {"nome": "Outra", "base_url": "https://x.com",
             "padrao_link_imovel": "-locacao-", "cidade": "Olinda"}
     sci._extrair_pagina(html, site, set(), sci.utils.ListaComStats())
+    assert chamadas, "sem marca explícita, a fonte visita o detalhe"
+
+
+def test_cards_inline_pode_desligar_a_visita(monkeypatch):
+    """Visita é requisição: fonte cujo card já traz o custo total desliga."""
+    import scraper_cards_inline as sci
+    chamadas = []
+    monkeypatch.setattr(sci.detalhe_custo, "enriquecer",
+                        lambda itens: chamadas.append(len(itens)) or 0)
+    html = '''<div><a href="/imovel/1/apartamento-locacao-olinda-pe-x">
+      Apartamento para locação</a> R$ 1.500 3 quartos 80 m²</div>'''
+    site = {"nome": "Outra", "base_url": "https://x.com",
+            "padrao_link_imovel": "-locacao-", "cidade": "Olinda",
+            "custo_no_detalhe": False}
+    sci._extrair_pagina(html, site, set(), sci.utils.ListaComStats())
     assert not chamadas
+
+
+def test_enriquecer_pula_quem_ja_tem_taxa_conhecida(monkeypatch):
+    """A cobertura tem de ACUMULAR entre rodadas.
+
+    Sem este desconto o teto de visitas era gasto todo dia nos mesmos
+    anúncios: medido no Chaves na Mão, 13 de 81 rodada após rodada.
+    """
+    import detalhe_custo
+    monkeypatch.setattr(detalhe_custo.db, "urls_com_taxa_conhecida",
+                        lambda urls: {"ja-tem"})
+    buscados = []
+
+    def buscar(url):
+        buscados.append(url)
+        return "<html>Aluguel R$ 1.500 Condomínio R$ 200 IPTU R$ 100</html>"
+
+    itens = [{"url": "ja-tem", "preco": 1000.0},
+             {"url": "falta", "preco": 1100.0}]
+    detalhe_custo.enriquecer(itens, buscar=buscar)
+    assert buscados == ["falta"]
+
+
+def test_enriquecer_visita_o_mais_barato_primeiro(monkeypatch):
+    import detalhe_custo
+    monkeypatch.setattr(detalhe_custo.db, "urls_com_taxa_conhecida",
+                        lambda urls: set())
+    buscados = []
+    itens = [{"url": "caro", "preco": 4000.0}, {"url": "barato", "preco": 900.0}]
+    detalhe_custo.enriquecer(itens, buscar=lambda u: buscados.append(u) or "",
+                             max_visitas=1)
+    assert buscados == ["barato"]
+
+
+def test_enriquecer_nao_reordena_a_lista_de_quem_chamou():
+    """A ordem de `itens` pertence a quem chamou: o scraper usa essa lista
+    depois, para filtrar e devolver."""
+    import detalhe_custo
+    itens = [{"url": "b", "preco": 2000.0}, {"url": "a", "preco": 1000.0}]
+    detalhe_custo.enriquecer(itens, buscar=lambda u: None)
+    assert [i["url"] for i in itens] == ["b", "a"]
