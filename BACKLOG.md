@@ -2,6 +2,22 @@
 
 ---
 
+## Fase 15 — A foto é a do anúncio que o card abre (06/09/2026)
+
+- [x] **Foto e link vinham de anúncios diferentes.** A capa era "a maior
+  lista de fotos entre os anúncios do imóvel"; o botão "Ver anúncio" abre o
+  mais BARATO. Em 9 dos 53 imóveis multi-fonte medidos, eram portais
+  diferentes — a pessoa clicava e via outras fotos. Em dois casos o linkado
+  tinha fotos e perdia por empate, porque o desempate seguia a ordem interna.
+  *Regra nova:* a capa é do anúncio linkado; a maior lista fica como reserva
+  para quando ele não tem foto (imagem do mesmo apartamento noutro portal
+  ainda é melhor que marcador cinza).
+  *Cuidado de implementação:* o cálculo da capa desceu para depois da
+  ordenação dos anúncios — é ela que define o destino do botão.
+  Verificado no banco real: 0 descasados em 57 imóveis multi-fonte.
+
+---
+
 ## Fase 14 — Custo no detalhe vira padrão (06/09/2026)
 
 - [x] **O preço errado não era de uma fonte, era o padrão.** Relatado no

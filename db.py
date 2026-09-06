@@ -971,12 +971,34 @@ def _lista_fotos(bruto) -> list[str]:
     return [u for u in (bruto or []) if isinstance(u, str) and u.startswith("http")]
 
 
-def _fotos_do_imovel(anuncios: list[dict], limite: int = 12) -> list[str]:
-    """Galeria do imóvel: a maior lista entre os anúncios que o anunciam.
+def _fotos_do_imovel(anuncios: list[dict], url_do_link: str | None = None,
+                     limite: int = 12) -> list[str]:
+    """Galeria do imóvel, PREFERINDO o anúncio para o qual o card aponta.
 
     Não junta as listas de fontes diferentes. Dois portais fotografam o
     mesmo apartamento, então unir só produziria a mesma sala duas vezes,
-    com URLs diferentes -- o carrossel ficaria repetindo cômodo."""
+    com URLs diferentes -- o carrossel ficaria repetindo cômodo.
+
+    A escolha de QUAL lista usar era "a maior", e isso estava errado: o botão
+    "Ver anúncio" abre o anúncio mais BARATO, e a foto vinha de quem tivesse
+    mais imagens. Em 9 dos 53 imóveis multi-fonte medidos em 06/09/2026 as
+    duas eram fontes diferentes -- a pessoa clicava e caía num anúncio com
+    outras fotos. Em dois casos o anúncio linkado até tinha fotos: perdia por
+    empate, porque o desempate seguia a ordem interna da lista.
+
+    Agora a foto é do anúncio que o card abre. A maior lista continua valendo
+    como reserva: quando o linkado não tem foto nenhuma, uma imagem do MESMO
+    apartamento noutro portal é melhor que o marcador cinza -- e o card
+    continua abrindo o anúncio certo.
+    """
+    if url_do_link:
+        for a in anuncios:
+            if a.get("url") == url_do_link:
+                fotos = _lista_fotos(a.get("fotos"))
+                if fotos:
+                    return fotos[:limite]
+                break
+
     melhor: list[str] = []
     for a in anuncios:
         fotos = _lista_fotos(a.get("fotos"))
@@ -1029,12 +1051,6 @@ def consolidar_imoveis(itens: list[dict]) -> list[dict]:
         imovel["titulo"] = utils.gerar_titulo(imovel)
         imovel["novo"] = any(a.get("novo") for a in anuncios)
 
-        # Foto de capa: o card do dashboard é visual, e nem toda fonte traz
-        # imagem. Pega a primeira foto disponível entre os anúncios do
-        # imóvel -- se nenhuma tiver, o card cai no marcador cinza.
-        imovel["fotos"] = _fotos_do_imovel(anuncios)
-        imovel["foto"] = imovel["fotos"][0] if imovel["fotos"] else None
-
         # Anúncios individuais, do mais barato para o mais caro. É o que o
         # card expansível mostra: o mesmo apartamento costuma sair por
         # valores diferentes em cada portal, e ver a lista lado a lado
@@ -1057,6 +1073,13 @@ def consolidar_imoveis(itens: list[dict]) -> list[dict]:
             ],
             key=lambda x: (x["preco"] is None, x["preco"] or 0),
         )
+        # Foto de capa: a do anúncio que o card abre (o primeiro da lista
+        # ordenada, o mais barato). Precisa vir DEPOIS da ordenação -- é ela
+        # que define para onde o botão aponta.
+        url_do_link = imovel["anuncios"][0]["url"] if imovel["anuncios"] else None
+        imovel["fotos"] = _fotos_do_imovel(anuncios, url_do_link)
+        imovel["foto"] = imovel["fotos"][0] if imovel["fotos"] else None
+
         # o preço de vitrine é o menor: é o que você de fato pagaria
         precos = [x["preco"] for x in imovel["anuncios"] if x["preco"]]
         if precos:
