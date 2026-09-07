@@ -84,9 +84,15 @@ def caminhos(cache: dict, largura: int = 360, altura: int = 300,
             continue
         d = "M" + "L".join(pts) + "Z"
         seguro = chave.replace('"', "")
-        partes.append(f'<path class="mapa-bairro" data-b="{seguro}" d="{d}"/>')
         xs = [float(p.split(",")[0]) for p in pts]
         ys = [float(p.split(",")[1]) for p in pts]
+        # A caixa vai no atributo em vez de sair de getBBox(): o JS reenquadra
+        # o mapa a cada mudança de filtro, e getBBox() num elemento sem layout
+        # (a aba fechada) devolve zeros em vez de erro -- um enquadramento
+        # errado e silencioso, que é o pior tipo neste projeto.
+        bb = f"{min(xs):.1f} {min(ys):.1f} {max(xs):.1f} {max(ys):.1f}"
+        partes.append(f'<path class="mapa-bairro" data-b="{seguro}" '
+                      f'data-bb="{bb}" d="{d}"/>')
         centros[chave] = [round(sum(xs) / len(xs), 1), round(sum(ys) / len(ys), 1)]
 
     if not partes:

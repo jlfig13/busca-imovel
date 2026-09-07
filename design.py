@@ -100,7 +100,7 @@ CSS_TOKENS = """
   --mapa-3:#7DD3FC;
   --mapa-4:#FDBA74;
   --mapa-5:#F97316;
-  --mapa-sem:#E2E8F0;   /* bairro sem preço nesta seleção */
+  --mapa-sem:#CBD5E1;   /* bairro sem preço nesta seleção */
   --mapa-traco:#FFFFFF;
 
   --foco:#0EA5E9;
@@ -142,7 +142,7 @@ CSS_TOKENS = """
     --mapa-3:#0369A1;
     --mapa-4:#B45309;
     --mapa-5:#EA580C;
-    --mapa-sem:#1E3050;
+    --mapa-sem:#37527A;
     --mapa-traco:#0B1220;
     --foco:#38BDF8;
     --sombra:0 1px 2px rgba(0,0,0,.4), 0 1px 8px rgba(0,0,0,.25);
@@ -172,7 +172,7 @@ CSS_TOKENS = """
   --mapa-3:#0369A1;
   --mapa-4:#B45309;
   --mapa-5:#EA580C;
-  --mapa-sem:#1E3050;
+  --mapa-sem:#37527A;
   --mapa-traco:#0B1220;
   --foco:#38BDF8;
   --sombra:0 1px 2px rgba(0,0,0,.4), 0 1px 8px rgba(0,0,0,.25);
@@ -945,17 +945,23 @@ a{color:inherit;}
    preserveAspectRatio="xMidYMid meet" centraliza o desenho no que sobra. */
 .mapa-svg{display:block; width:100%; height:auto; max-height:58vh;
   touch-action:manipulation;}
-.mapa-bairro{fill:var(--mapa-sem); stroke:var(--mapa-traco); stroke-width:.6;
+/* vector-effect: o mapa reenquadra conforme a cidade escolhida, e sem isso a
+   espessura do traço escala junto -- borda grossa demais na região inteira,
+   fio invisível ao aproximar em dois bairros. */
+.mapa-bairro{fill:var(--mapa-sem); stroke:var(--mapa-traco); stroke-width:1;
+  vector-effect:non-scaling-stroke;
   cursor:pointer; transition:fill .15s ease, opacity .15s ease;}
 .mapa-bairro.q1{fill:var(--mapa-1);} .mapa-bairro.q2{fill:var(--mapa-2);}
 .mapa-bairro.q3{fill:var(--mapa-3);} .mapa-bairro.q4{fill:var(--mapa-4);}
 .mapa-bairro.q5{fill:var(--mapa-5);}
 /* Selecionado ganha CONTORNO, não só cor: a cor já carrega o preço, e
    trocá-la para marcar seleção diria a coisa errada. */
-.mapa-bairro.sel{stroke:var(--tinta); stroke-width:2;}
+.mapa-bairro.sel{stroke:var(--tinta); stroke-width:2.5;}
 .mapa-bairro.apagado{opacity:.35;}
-.mapa-rotulo{font-size:7px; fill:var(--tinta); paint-order:stroke;
-  stroke:var(--fundo); stroke-width:2.5px; stroke-linejoin:round;
+/* Tamanho e espessura do contorno vêm do JS, em unidades do SVG: eles
+   acompanham o enquadramento, que muda com a cidade escolhida. */
+.mapa-rotulo{fill:var(--tinta); paint-order:stroke;
+  stroke:var(--superficie); stroke-linejoin:round;
   pointer-events:none; text-anchor:middle; font-weight:600;}
 .mapa-ponto{fill:var(--tinta); pointer-events:none;}
 
@@ -1054,7 +1060,6 @@ a{color:inherit;}
 
 /* Telas estreitas (o Poco cai aqui com fonte do sistema aumentada). */
 @media (max-width:430px){
-  .mapa-rotulo{display:none;}
   /* 2x2: com larguras naturais a segunda linha ficava desalinhada da
      primeira, e o grupo parecia quebrado em vez de dobrado. */
   .escopo{display:flex; width:100%;}

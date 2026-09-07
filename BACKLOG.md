@@ -2,6 +2,61 @@
 
 ---
 
+## Fase 18 — O mapa vira mapa (07/09/2026)
+
+Print do usuário: nomes empilhados sobre pontos de 3px, nenhum contorno
+visível. Três causas somadas.
+
+- [x] **A divisa vinha em pedaços e ninguém costurava.** Bairro em
+  `boundary=administrative` não é um way só: a relação lista vários ways
+  `outer`, cada um um TRECHO da divisa, em ordem e orientação quaisquer. O
+  código pegava o trecho MAIS LONGO e chamava de bairro. Medido no cache da
+  rodada 66: Casa Caiada com 3 pontos e 0,24 x 0,85 km, Pina com 3, Madalena
+  com 3. Bairro típico de 0,5 km num mapa de 42 km = 3 pixels — os pontinhos
+  da tela. Entrou `_montar_aneis`, e a escolha entre candidatos passou a ser
+  por ÁREA: foi contando PONTO que o código preferiu lascas de fronteira, já
+  que um trecho detalhado tem mais pontos que o contorno de um bairro pequeno.
+
+- [x] **Cache envenenado precisa de carimbo.** 55 bairros já estavam gravados
+  errados, e o cache existe justamente para nunca mais perguntar — sem versão,
+  dado errado é permanente. `geo.VERSAO` descarta e refaz quando a forma de
+  extrair muda.
+
+- [x] **Enquadramento pelas cidades escolhidas.** A região vai do Cabo a
+  Paulista: 42 km norte-sul contra 23 km leste-oeste. Com o mapa fixo nisso e
+  Recife+Olinda no filtro, o que interessa ficava espremido em um terço da
+  tela. O JS reenquadra pela caixa dos bairros das cidades escolhidas. A caixa
+  vem em `data-bb` do Python e não de `getBBox()`, que devolve ZEROS num
+  elemento sem layout (aba fechada) — enquadramento errado e silencioso.
+
+- [x] **Rótulo só onde há imóvel, e sem colidir.** Eram desenhados uma vez
+  para todos os bairros do cache; com 33 no mapa virou ilegível. Nome
+  sobreposto é pior que nome nenhum: além de não se ler, esconde o polígono
+  que deveria explicar. Agora rotula só bairro com imóvel no recorte, mais
+  cheio primeiro, pulando quem encostar — 11 rótulos em vez de 52. O resto é
+  contexto, e o toque revela o nome na faixa de detalhe.
+
+---
+
+## Fase 17b — Freio no Overpass e zero que não é leitura (07/09/2026)
+
+Medidos na rodada 64, a primeira com o mapa no ar.
+
+- [x] **Zero gravado no banco também travava o CRECI.** A Fase 16 corrigiu o
+  parser, mas `urls_com_taxa_conhecida` filtrava por `condominio IS NOT NULL`
+  e as linhas antigas têm 0.0 — contavam como "taxa lida" e o detalhe nunca
+  mais era visitado. Só 9 dos 29 anúncios foram visitados; o caso do relato
+  (2500) foi corrigido para 2691, mas sozinho. Passa a exigir `> 0`.
+
+- [x] **O mapa triplicou a rodada.** 12min57s contra 4min37s, e 11 das 25
+  consultas falharam — oito com HTTP 429. Pausa de 2s era rápida demais para
+  a instância pública. Agora: pausa de 5s, teto de 120s para o passo (a rodada
+  de COLETA não pode ficar refém de um serviço acessório) e parada após três
+  recusas seguidas — insistir depois de um 429 é a carga alheia que o cache
+  existe para evitar, e medido também é inútil: depois do primeiro vieram sete.
+
+---
+
 ## Fase 17 — Aba de mapa, sem sair do offline (06/09/2026)
 
 Pedido: "esse repo de caiooaragao tem busca em OLX + mapa (...) gostei do

@@ -113,3 +113,15 @@ def test_anel_meio_dentro_meio_fora_e_recusado():
     a coisa errada, não de bairro grande."""
     anel = _quadrado(-34.9, -8.05) + [[-40.5, -9.3]]
     assert not geo._na_regiao(anel)
+
+
+def test_cada_bairro_carrega_a_propria_caixa():
+    """O JS reenquadra o mapa a cada mudança de filtro. getBBox() num elemento
+    sem layout (aba fechada) devolve ZEROS em vez de erro -- enquadramento
+    errado e silencioso."""
+    svg, _ = mapa.caminhos(CACHE)
+    caixas = re.findall(r'data-bb="([^"]+)"', svg)
+    assert len(caixas) == 3
+    for c in caixas:
+        x0, y0, x1, y1 = [float(v) for v in c.split()]
+        assert x1 > x0 and y1 > y0, "caixa tem de ter área"

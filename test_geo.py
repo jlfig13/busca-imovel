@@ -23,18 +23,25 @@ def test_le_way_com_geometria():
     assert anel == [[-34.9, -8.1], [-34.8, -8.1], [-34.8, -8.0]]
 
 
-def test_le_relacao_pegando_o_maior_anel_externo():
+def test_le_relacao_montando_a_divisa_e_ignorando_inner():
+    """A divisa vem fatiada em ways `outer`; o bairro é a costura deles.
+
+    Este teste já existiu afirmando que "o maior anel externo vence", medindo
+    o maior por número de PONTOS. Era a regra errada -- e foi ela que encheu
+    o cache de lascas de fronteira de 3 pontos."""
     el = [{"type": "relation", "members": [
-        {"role": "outer", "geometry": [{"lon": -34.9, "lat": -8.1},
-                                       {"lon": -34.8, "lat": -8.1}]},
+        # o quadrado do bairro, partido em dois trechos
         {"role": "outer", "geometry": [{"lon": -34.9, "lat": -8.1},
                                        {"lon": -34.8, "lat": -8.1},
-                                       {"lon": -34.8, "lat": -8.0},
-                                       {"lon": -34.9, "lat": -8.0}]},
+                                       {"lon": -34.8, "lat": -8.0}]},
+        {"role": "outer", "geometry": [{"lon": -34.8, "lat": -8.0},
+                                       {"lon": -34.9, "lat": -8.0},
+                                       {"lon": -34.9, "lat": -8.1}]},
         {"role": "inner", "geometry": [{"lon": -34.85, "lat": -8.05}]},
     ]}]
     anel = geo.buscar("Recife", "Boa Viagem", abrir=_resposta(el))
-    assert len(anel) == 4, "o maior anel externo vence; inner é ignorado"
+    assert geo._mesma_ponta(anel[0], anel[-1]), "a divisa costurada fecha"
+    assert abs(geo._area_aprox(anel) - 0.01) < 1e-9, "sai o quadrado inteiro"
 
 
 def test_consulta_aceita_fronteira_administrativa():
@@ -182,3 +189,94 @@ def test_uma_resposta_boa_zera_a_contagem_de_recusas(tmp_path, monkeypatch):
     pares = [("Recife", f"B{i}") for i in range(8)]
     geo.atualizar(pares, abrir=alterna)
     assert n["i"] == 8, "alternando falha e sucesso, nunca há 3 seguidas"
+
+
+# --- costura da fronteira ----------------------------------------------
+# O mapa saiu como pontinhos na tela porque um bairro em
+# boundary=administrative NÃO é um way só: a relação lista vários ways
+# `outer`, cada um um TRECHO da divisa, em ordem e orientação quaisquer.
+# Pegar o trecho mais longo dava uma lasca de fronteira. Medido no cache da
+# rodada 66: Casa Caiada com 3 pontos e 0,24 x 0,85 km, Pina com 3, Madalena
+# com 3 -- bairro típico de 0,5 km num mapa de 42 km, ou seja, 3 pixels.
+
+def _quadrado_em_trechos():
+    """O mesmo quadrado, partido em 4 trechos fora de ordem e com duas
+    orientações invertidas -- que é como o OSM entrega."""
+    return [
+        [[0, 0], [1, 0]],
+        [[1, 1], [0, 1]],
+        [[1, 0], [1, 1]],
+        [[0, 0], [0, 1]],
+    ]
+
+
+def test_trechos_soltos_viram_um_anel_fechado():
+    aneis = geo._montar_aneis(_quadrado_em_trechos())
+    assert len(aneis) == 1
+    assert geo._mesma_ponta(aneis[0][0], aneis[0][-1]), "o anel tem de fechar"
+    assert abs(geo._area_aprox(aneis[0]) - 1.0) < 1e-9
+
+
+def test_relacao_com_divisa_em_pedacos_vira_o_bairro_inteiro():
+    """O caso real: a relação do bairro, com a divisa fatiada em ways."""
+    el = {"type": "relation", "members": [
+        {"role": "outer", "geometry": [{"lon": x, "lat": y} for x, y in t]}
+        for t in _quadrado_em_trechos()
+    ]}
+    anel = geo._anel_do_elemento(el)
+    assert abs(geo._area_aprox(anel) - 1.0) < 1e-9, (
+        "pegar o trecho mais longo daria uma lasca de área zero")
+
+
+def test_escolhe_por_area_e_nao_por_numero_de_pontos():
+    """Um trecho de divisa cheio de detalhe tem mais PONTOS que o contorno
+    de um bairro pequeno. Foi contando ponto que o código escolheu lascas."""
+    detalhado = [[0.5 + i * 0.001, 0.5] for i in range(50)]   # linha, área ~0
+    el = {"type": "relation", "members": (
+        [{"role": "outer", "geometry": [{"lon": x, "lat": y} for x, y in t]}
+         for t in _quadrado_em_trechos()]
+        + [{"role": "outer",
+            "geometry": [{"lon": x, "lat": y} for x, y in detalhado]}]
+    )}
+    anel = geo._anel_do_elemento(el)
+    assert geo._area_aprox(anel) > 0.9, "o quadrado tem de vencer a linha"
+
+
+def test_membro_inner_e_ignorado():
+    el = {"type": "relation", "members": (
+        [{"role": "outer", "geometry": [{"lon": x, "lat": y} for x, y in t]}
+         for t in _quadrado_em_trechos()]
+        + [{"role": "inner",
+            "geometry": [{"lon": 0.4, "lat": 0.4}, {"lon": 0.6, "lat": 0.6}]}]
+    )}
+    assert abs(geo._area_aprox(geo._anel_do_elemento(el)) - 1.0) < 1e-9
+
+
+def test_trecho_que_nao_emenda_nao_derruba_o_resto():
+    """Divisa com um pedaço faltando não pode custar o bairro inteiro: sai um
+    anel aberto, que ainda desenha melhor que nada."""
+    trechos = _quadrado_em_trechos()[:3] + [[[9, 9], [9, 10]]]
+    aneis = geo._montar_aneis(trechos)
+    assert len(aneis) == 2
+    assert max(len(a) for a in aneis) >= 4
+
+
+def test_cache_de_versao_anterior_e_descartado(tmp_path, monkeypatch):
+    """A v1 gravou lascas de divisa em vez do contorno. Sem carimbo de
+    versão, dado errado que já entrou no cache seria permanente -- o cache
+    existe justamente para nunca mais perguntar."""
+    caminho = tmp_path / "b.json"
+    monkeypatch.setattr(geo, "CAMINHO", str(caminho))
+    caminho.write_text(json.dumps({
+        "_versao": 1,
+        "Recife|Pina": {"anel": [[0, 0], [1, 0], [0, 1]], "centro": [0, 0]},
+    }), encoding="utf-8")
+    assert geo.carregar() == {}
+
+
+def test_cache_da_versao_atual_e_lido(tmp_path, monkeypatch):
+    caminho = tmp_path / "b.json"
+    monkeypatch.setattr(geo, "CAMINHO", str(caminho))
+    geo.salvar({"Recife|Pina": {"anel": [[0, 0], [1, 0], [0, 1]], "centro": [0, 0]}})
+    lido = geo.carregar()
+    assert list(lido) == ["Recife|Pina"], "a chave de versão não vira bairro"

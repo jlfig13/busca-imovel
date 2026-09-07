@@ -1,6 +1,6 @@
 # Estado Atual
 
-**Atualizado em:** 2026-09-06
+**Atualizado em:** 2026-09-07
 **Branch:** `claude/remote-control-hgauah`
 **No ar:** https://jlfig13.github.io/busca-imovel/
 
@@ -14,6 +14,40 @@
 | [#4](https://github.com/jlfig13/busca-imovel/pull/4) | Cron 07:00 → 07:13 BRT, fora da hora cheia |
 | [#5](https://github.com/jlfig13/busca-imovel/pull/5) | `historico_precos` aposentada, aba "Fontes" com rendimento, filtros na URL |
 | [#6](https://github.com/jlfig13/busca-imovel/pull/6) | CLAUDE.md + este arquivo, `.claude/progress/` versionado |
+
+**07/09: o mapa saiu como pontinhos.** Print do usuário: nomes empilhados
+("Jardim A|Rio Doce", "FragosoIada") sobre pontos de 3px, sem contorno
+nenhum visível. Três causas somadas, e a primeira é de dados:
+
+1. **Contorno errado no cache.** Bairro em `boundary=administrative` não é um
+   way só: a relação lista vários ways `outer`, cada um um TRECHO da divisa,
+   em ordem e orientação quaisquer. O código pegava o trecho MAIS LONGO e
+   chamava de bairro. Medido: Casa Caiada com 3 pontos e 0,24 x 0,85 km, Pina
+   com 3, Madalena com 3 — bairro típico de 0,5 km num mapa de 42 km, ou seja
+   3 pixels. Agora os trechos são costurados (`geo._montar_aneis`) e a escolha
+   entre candidatos é por ÁREA, não por número de pontos — foi contando ponto
+   que o código preferiu lascas de fronteira.
+2. **Cache envenenado.** 55 bairros já estavam gravados errados, e o cache
+   existe justamente para nunca mais perguntar. Entrou `geo.VERSAO`: muda a
+   forma de extrair, o cache inteiro é descartado e refeito.
+3. **Enquadramento e rótulos.** O mapa cobria os 42 km de Cabo a Paulista
+   mesmo com Recife+Olinda no filtro. Agora o JS reenquadra pelas cidades
+   escolhidas (caixa de cada bairro vem em `data-bb`; `getBBox()` devolveria
+   zeros com a aba fechada). E rotula só bairro COM imóvel no recorte, pulando
+   quem colidir — 11 rótulos em vez de 52.
+
+Conferido a 412px e 900px (o aparelho roda em modo desktop), claro e escuro.
+
+**07/09: dois defeitos achados nos números da rodada 64.**
+
+- `urls_com_taxa_conhecida` filtrava por `condominio IS NOT NULL`, e as linhas
+  gravadas antes da correção do parser têm 0.0 — contavam como "taxa lida" e o
+  detalhe nunca mais era visitado. Só 9 dos 29 anúncios do CRECI chegaram a ser
+  visitados. Passa a exigir `> 0`.
+- O passo do mapa gastou 8min25s e tomou HTTP 429 em 8 das 11 falhas: pausa de
+  2s era rápida demais para a instância pública do Overpass. Agora 5s, teto de
+  120s para o passo, e três recusas seguidas encerram — insistir depois de um
+  429 é a carga alheia que o cache existe para evitar.
 
 **06/09 (4): aba Mapa.** "gostei do mapa, poderia ter uma aba de mapa onde a
 busca e visualização seja pelo mapa" — a partir do `caiooaragao/rent_finder`.
@@ -502,10 +536,12 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 - [ ] Decidir o corte de fontes (acima).
 - [ ] Alerta ativo — hoje é preciso abrir o dashboard para saber que algo
       baixou de preço.
-- [ ] **Encher `geo/bairros.json`.** O arquivo entra vazio: o Overpass é
-      inalcançável deste ambiente (curl 000), então quem preenche é o runner,
-      25 bairros por rodada. Com ~61 bairros, o mapa fica completo em 3
-      rodadas. Até lá a aba mostra a explicação, não uma tela branca.
+- [ ] **Refazer `geo/bairros.json` na v2.** O cache foi invalidado pela
+      correção da costura de fronteira; o runner rebusca ~55 bairros a 5s
+      cada, com teto de 120s por rodada — são 4 a 6 rodadas até completar.
+      Até lá o mapa desenha o que já veio. O Overpass é inalcançável deste
+      ambiente (curl 000), então só dá para conferir o resultado real
+      olhando a rodada.
 - [ ] **Página de KPI** (valorização por bairro/cidade). O "bairro mais caro
       e mais barato" já é viável — a aba Mapa responde isso. A valorização
       ainda não: 14 eventos de preço em 17 dias, e há viés de composição
@@ -516,7 +552,7 @@ zero só porque duplicam uma à outra e sustentam o catálogo inteiro.
 ## Estado da operação
 
 - Cron de 2 em 2 horas (13 */2 * * *, UTC) + disparo manual.
-- 270 testes, ~4s.
+- 291 testes, ~5s.
 - Banco: manutenção limpa só apresentação de anúncio fora do ar; o histórico
   (`evento`) é preservado. VACUUM aos domingos.
 - REMAX reativado e produzindo (64 coletados, 4 no filtro, 1 exclusivo).

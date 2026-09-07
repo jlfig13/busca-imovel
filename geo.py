@@ -61,8 +61,19 @@ TIMEOUT_S = 60
 TETO_SEGUNDOS = 120
 
 
+# Versão da GEOMETRIA gravada, não do arquivo. Sobe quando a forma de extrair
+# o contorno muda, e o cache inteiro é descartado e refeito.
+#
+# Existe por um estrago concreto: a v1 gravou o maior TRECHO de divisa em vez
+# da divisa costurada, e 55 bairros entraram no repositório como lascas de 3
+# pontos. Sem carimbo de versão, dado errado que já está no cache é
+# permanente -- o cache existe justamente para nunca mais perguntar.
+VERSAO = 2
+_CHAVE_VERSAO = "_versao"
+
+
 def carregar() -> dict:
-    """Cache lido do repositório. Ausente ou quebrado devolve vazio.
+    """Cache lido do repositório. Ausente, quebrado ou velho devolve vazio.
 
     Igual à triagem: o mapa é conveniência, o catálogo é o produto. Um JSON
     corrompido não pode derrubar a rodada."""
@@ -74,13 +85,21 @@ def carregar() -> dict:
     except (json.JSONDecodeError, OSError) as e:
         log.warning(f"geo/bairros.json ilegível ({e}); mapa fica sem geometria")
         return {}
-    return dados if isinstance(dados, dict) else {}
+    if not isinstance(dados, dict):
+        return {}
+    if dados.pop(_CHAVE_VERSAO, 1) != VERSAO:
+        log.info(f"[geo] cache de contornos é de uma versão anterior; será "
+                 f"refeito ({len(dados)} bairro(s) descartado(s))")
+        return {}
+    return dados
 
 
 def salvar(cache: dict) -> None:
     os.makedirs(os.path.dirname(CAMINHO), exist_ok=True)
+    saida = dict(cache)
+    saida[_CHAVE_VERSAO] = VERSAO
     with open(CAMINHO, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False, sort_keys=True, indent=1)
+        json.dump(saida, f, ensure_ascii=False, sort_keys=True, indent=1)
 
 
 def chave(cidade: str, bairro: str) -> str:
@@ -126,23 +145,92 @@ def _na_regiao(anel: list[list[float]]) -> bool:
     return all(lo0 <= lon <= lo1 and la0 <= lat <= la1 for lon, lat in anel)
 
 
+# Tolerância para considerar que duas pontas de trecho são o mesmo nó. O
+# Overpass devolve coordenadas com 7 casas; 1e-7 grau é ~1cm. Comparar float
+# por igualdade exata funcionaria na prática, mas uma folga barata evita que
+# um arredondamento deixe o anel aberto e derrube o bairro inteiro.
+TOL_COSTURA = 1e-6
+
+
+def _mesma_ponta(a: list[float], b: list[float]) -> bool:
+    return abs(a[0] - b[0]) < TOL_COSTURA and abs(a[1] - b[1]) < TOL_COSTURA
+
+
+def _montar_aneis(trechos: list[list[list[float]]]) -> list[list[list[float]]]:
+    """Costura trechos soltos de fronteira em anéis fechados.
+
+    ISTO É O CORAÇÃO DO MÓDULO, e a falta dele produziu um mapa de pontinhos.
+
+    Um bairro em `boundary=administrative` NÃO é um way só: a relação lista
+    vários ways `outer`, cada um um TRECHO da divisa, em ordem qualquer e com
+    orientação qualquer. O código anterior pegava o trecho mais longo e
+    chamava de bairro. Medido no cache da rodada 66: Casa Caiada saiu com 3
+    pontos e 0,24 x 0,85 km, Pina com 3 pontos, Madalena com 3 -- lascas de
+    divisa, não bairros. O bairro típico ficou com 0,5 km num mapa de 42 km,
+    ou seja, 3 pixels: exatamente os pontinhos que apareceram na tela.
+
+    O algoritmo é o óbvio: pega um trecho, e enquanto houver outro que comece
+    (ou termine) onde este acabou, emenda -- invertendo quando preciso, já que
+    a orientação não é garantida. Fecha o anel quando volta ao início.
+    """
+    pendentes = [list(t) for t in trechos if len(t) >= 2]
+    aneis = []
+    while pendentes:
+        atual = pendentes.pop(0)
+        emendou = True
+        while emendou and not _mesma_ponta(atual[0], atual[-1]):
+            emendou = False
+            for i, t in enumerate(pendentes):
+                if _mesma_ponta(atual[-1], t[0]):
+                    atual += t[1:]
+                elif _mesma_ponta(atual[-1], t[-1]):
+                    atual += t[::-1][1:]
+                elif _mesma_ponta(atual[0], t[-1]):
+                    atual = t[:-1] + atual
+                elif _mesma_ponta(atual[0], t[0]):
+                    atual = t[::-1][:-1] + atual
+                else:
+                    continue
+                pendentes.pop(i)
+                emendou = True
+                break
+        aneis.append(atual)
+    return aneis
+
+
 def _anel_do_elemento(el: dict) -> list[list[float]] | None:
     """Extrai um anel [[lon,lat], ...] de um elemento do Overpass."""
     if el.get("type") == "way" and el.get("geometry"):
         return [[p["lon"], p["lat"]] for p in el["geometry"]]
     if el.get("type") == "relation":
-        # Relação vira o maior anel externo. Buraco (inner) é ignorado de
-        # propósito: num mapa de 360px de largura ele não aparece, e tratar
-        # multipolígono aqui dobraria a complexidade sem efeito visível.
-        melhor = None
-        for m in el.get("members", []):
-            if m.get("role") != "outer" or not m.get("geometry"):
-                continue
-            anel = [[p["lon"], p["lat"]] for p in m["geometry"]]
-            if melhor is None or len(anel) > len(melhor):
-                melhor = anel
-        return melhor
+        # Buraco (inner) é ignorado de propósito: num mapa de 360px de largura
+        # ele não aparece, e tratar multipolígono aqui dobraria a complexidade
+        # sem efeito visível. Já os `outer` precisam ser costurados -- ver
+        # _montar_aneis.
+        trechos = [[[p["lon"], p["lat"]] for p in m["geometry"]]
+                   for m in el.get("members", [])
+                   if m.get("role") == "outer" and m.get("geometry")]
+        if not trechos:
+            return None
+        # Maior anel MONTADO, não maior trecho solto. Bairro que por acaso
+        # venha em duas partes (ilha) perde a menor, que no mapa não aparece.
+        aneis = _montar_aneis(trechos)
+        return max(aneis, key=_area_aprox) if aneis else None
     return None
+
+
+def _area_aprox(anel: list[list[float]]) -> float:
+    """Área pelo laço do sapateiro. Serve para escolher o maior anel.
+
+    Área e não contagem de pontos: um trecho de divisa cheio de detalhe tem
+    mais pontos que o contorno inteiro de um bairro pequeno, e foi contando
+    ponto que o código anterior escolheu lascas de fronteira."""
+    s = 0.0
+    for i in range(len(anel)):
+        x1, y1 = anel[i]
+        x2, y2 = anel[(i + 1) % len(anel)]
+        s += x1 * y2 - x2 * y1
+    return abs(s) / 2
 
 
 def buscar(cidade: str, bairro: str, abrir=None) -> list[list[float]] | None:
@@ -183,7 +271,7 @@ def buscar_diag(cidade: str, bairro: str,
         anel = _anel_do_elemento(el)
         if not anel or not _na_regiao(anel):
             continue
-        if melhor is None or len(anel) > len(melhor):
+        if melhor is None or _area_aprox(anel) > _area_aprox(melhor):
             melhor = anel
     return melhor, True
 

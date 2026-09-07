@@ -1476,6 +1476,10 @@ const MIN_ANUNCIOS_BAIRRO = 2;
 const mapaSvg = document.querySelector('.mapa-svg');
 const mapaDet = el('mapa-detalhe');
 let mapaSelecionado = null;
+// Enquadramento atual [x, y, largura, altura]. Deixa de ser o que o Python
+// emitiu assim que o filtro escolhe cidade -- ver ajustarViewBox.
+let VB = ((mapaSvg && mapaSvg.getAttribute('viewBox')) || '0 0 100 100')
+  .split(' ').map(Number);
 
 function mediana(v){{
   if (!v.length) return null;
@@ -1547,6 +1551,9 @@ function pintarMapa(){{
     p.appendChild(t);
   }});
 
+  ajustarViewBox();
+  desenharRotulos(resumo);
+
   const nota = el('mapa-legenda-nota');
   if (nota){{
     nota.textContent = valores.length
@@ -1556,22 +1563,99 @@ function pintarMapa(){{
   pintarDetalheMapa(resumo);
 }}
 
-/* Rótulo e ponto são geometria, não estado: desenhados uma vez. Recriá-los a
-   cada filtro faria o texto piscar a cada tecla digitada na busca. */
-function rotularMapa(){{
+/* Reenquadra o mapa nas cidades escolhidas.
+
+   A região monitorada vai do Cabo de Santo Agostinho a Paulista: 42km de
+   norte a sul contra 23km de leste a oeste. Com o mapa fixo nessa extensão e
+   Recife+Olinda no filtro, os bairros que interessam ficavam espremidos num
+   terço da tela enquanto dois terços eram litoral vazio.
+
+   Enquadra pela CAIXA de cada bairro, lida do atributo data-bb. getBBox()
+   seria o caminho natural, mas devolve zeros num elemento sem layout (a aba
+   fechada) -- enquadramento errado e silencioso. */
+function ajustarViewBox(){{
+  if (!mapaSvg) return;
+  const paths = [...mapaSvg.querySelectorAll('.mapa-bairro')];
+  if (!paths.length) return;
+  const daCidade = FCidades.length
+    ? paths.filter(p => FCidades.includes(p.dataset.b.split('|')[0]))
+    : paths;
+  // Cidade escolhida sem nenhum contorno ainda no cache não pode zerar o
+  // mapa: cai para a região inteira, que é informação, não tela em branco.
+  const alvo = daCidade.length ? daCidade : paths;
+
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of alvo){{
+    const bb = (p.dataset.bb || '').split(' ').map(Number);
+    if (bb.length !== 4 || bb.some(isNaN)) continue;
+    x0 = Math.min(x0, bb[0]); y0 = Math.min(y0, bb[1]);
+    x1 = Math.max(x1, bb[2]); y1 = Math.max(y1, bb[3]);
+  }}
+  if (!isFinite(x0)) return;
+
+  const folga = Math.max((x1 - x0), (y1 - y0)) * 0.06 + 2;
+  x0 -= folga; y0 -= folga; x1 += folga; y1 += folga;
+  VB = [x0, y0, x1 - x0, y1 - y0];
+  mapaSvg.setAttribute('viewBox', VB.join(' '));
+}}
+
+/* Rótulos: só onde há imóvel, e sem colidir.
+
+   Eram desenhados uma vez, para TODOS os bairros do cache. Com 33 no mapa o
+   resultado foi ilegível -- "Jardim A|Rio Doce", "FragosoIada",
+   "Casa E|Espinheiroa" empilhados. Nome sobreposto é pior que nome nenhum:
+   além de não se ler, esconde o polígono que ele deveria explicar.
+
+   Duas regras: rotula só bairro com imóvel no recorte (o resto é contexto, e
+   o toque revela o nome na faixa de detalhe), e pula o rótulo cuja caixa
+   encostar num já colocado. Quem tem mais imóveis entra primeiro, porque na
+   disputa por espaço o bairro com mais oferta é o que a pessoa procura. */
+function desenharRotulos(resumo){{
   if (!mapaSvg) return;
   const ns = 'http://www.w3.org/2000/svg';
-  for (const chave of Object.keys(MAPA_CENTROS)){{
+  mapaSvg.querySelectorAll('.mapa-rotulo, .mapa-ponto').forEach(e => e.remove());
+
+  // A fonte acompanha o enquadramento: com o viewBox mudando de escala, um
+  // tamanho fixo em unidades de SVG viraria letra gigante quando o mapa se
+  // aproxima de dois bairros.
+  const fonte = Math.max(VB[3] * 0.023, 2.5);
+  const candidatos = Object.keys(MAPA_CENTROS)
+    .filter(k => (resumo[k] || {{}}).n > 0)
+    .sort((a, b) => (resumo[b].n - resumo[a].n));
+
+  const postos = [];
+  const encosta = (a, b) =>
+    a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+
+  for (const chave of candidatos){{
     const xy = MAPA_CENTROS[chave];
+    if (xy[0] < VB[0] || xy[0] > VB[0] + VB[2]) continue;
+    if (xy[1] < VB[1] || xy[1] > VB[1] + VB[3]) continue;
+
+    const nome = chave.split('|')[1];
+    // Largura estimada: 0.52em por caractere é a média de uma sans em caixa
+    // mista. Medir de verdade exigiria getComputedTextLength(), que precisa
+    // de layout -- e o mapa é repintado com a aba fechada.
+    const larg = nome.length * fonte * 0.52;
+    const caixa = {{x0: xy[0] - larg / 2, x1: xy[0] + larg / 2,
+                   y0: xy[1] - fonte * 1.9, y1: xy[1] - fonte * 0.4}};
+    if (postos.some(p => encosta(caixa, p))) continue;
+    postos.push(caixa);
+
+    const t = document.createElementNS(ns, 'text');
+    t.setAttribute('x', xy[0]);
+    t.setAttribute('y', xy[1] - fonte * 0.7);
+    t.setAttribute('class', 'mapa-rotulo');
+    t.setAttribute('font-size', fonte.toFixed(2));
+    t.setAttribute('stroke-width', (fonte * 0.32).toFixed(2));
+    t.textContent = nome;
+    mapaSvg.appendChild(t);
+
     const c = document.createElementNS(ns, 'circle');
     c.setAttribute('cx', xy[0]); c.setAttribute('cy', xy[1]);
-    c.setAttribute('r', '1.2'); c.setAttribute('class', 'mapa-ponto');
+    c.setAttribute('r', (fonte * 0.18).toFixed(2));
+    c.setAttribute('class', 'mapa-ponto');
     mapaSvg.appendChild(c);
-    const t = document.createElementNS(ns, 'text');
-    t.setAttribute('x', xy[0]); t.setAttribute('y', xy[1] - 3);
-    t.setAttribute('class', 'mapa-rotulo');
-    t.textContent = chave.split('|')[1];
-    mapaSvg.appendChild(t);
   }}
 }}
 
@@ -1615,7 +1699,6 @@ function pintarDetalheMapa(resumo){{
 }}
 
 if (mapaSvg){{
-  rotularMapa();
   mapaSvg.addEventListener('click', ev => {{
     const p = ev.target.closest('.mapa-bairro');
     if (!p) return;
