@@ -2095,6 +2095,22 @@
    -8.05862
   ]
  },
+ "Recife|Monteiro": {
+  "anel": [
+   [
+    -34.92373,
+    -8.02813
+   ],
+   [
+    -34.92678,
+    -8.02753
+   ]
+  ],
+  "centro": [
+   -34.92543,
+   -8.02758
+  ]
+ },
  "Recife|NOVA DESCOBERTA": {
   "anel": null,
   "centro": null
