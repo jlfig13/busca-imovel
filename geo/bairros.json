@@ -171,6 +171,10 @@
    -8.01357
   ]
  },
+ "Ipojuca|Centro": {
+  "anel": null,
+  "centro": null
+ },
  "Ipojuca|Cupe": {
   "anel": [
    [
@@ -931,6 +935,22 @@
    -8.12833
   ]
  },
+ "Olinda|Alto da Nação": {
+  "anel": [
+   [
+    -34.85061,
+    -7.99999
+   ],
+   [
+    -34.85291,
+    -8.0028
+   ]
+  ],
+  "centro": [
+   -34.85162,
+   -8.00142
+  ]
+ },
  "Olinda|Bairro Novo": {
   "anel": [
    [
@@ -1184,6 +1204,10 @@
   ]
  },
  "Olinda|tres quartos sendo duas suite": {
+  "anel": null,
+  "centro": null
+ },
+ "Olinda|Água Fria": {
   "anel": null,
   "centro": null
  },
