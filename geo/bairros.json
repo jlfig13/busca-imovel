@@ -675,6 +675,50 @@
    -8.15139
   ]
  },
+ "Jaboatão dos Guararapes|Marcos Freire": {
+  "anel": [
+   [
+    -35.00342,
+    -8.13215
+   ],
+   [
+    -35.00322,
+    -8.1307
+   ],
+   [
+    -35.00148,
+    -8.13083
+   ],
+   [
+    -34.99928,
+    -8.12892
+   ],
+   [
+    -34.99852,
+    -8.12738
+   ],
+   [
+    -34.99746,
+    -8.12708
+   ],
+   [
+    -34.99665,
+    -8.12759
+   ],
+   [
+    -34.99475,
+    -8.12639
+   ],
+   [
+    -34.99358,
+    -8.1269
+   ]
+  ],
+  "centro": [
+   -34.9983,
+   -8.12834
+  ]
+ },
  "Jaboatão dos Guararapes|Piedade": {
   "anel": [
    [
@@ -1140,6 +1184,10 @@
   ]
  },
  "Olinda|tres quartos sendo duas suite": {
+  "anel": null,
+  "centro": null
+ },
+ "Paulista|Artur Lundgren I": {
   "anel": null,
   "centro": null
  },
