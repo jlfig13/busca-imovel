@@ -227,6 +227,10 @@
    -7.87268
   ]
  },
+ "Ipojuca|Califórnia": {
+  "anel": null,
+  "centro": null
+ },
  "Ipojuca|Centro": {
   "anel": null,
   "centro": null
@@ -266,6 +270,10 @@
    -35.0042,
    -8.49428
   ]
+ },
+ "Ipojuca|PE": {
+  "anel": null,
+  "centro": null
  },
  "Ipojuca|Vila de Porto de Galinhas": {
   "anel": null,
@@ -1241,6 +1249,26 @@
   "centro": [
    -34.83217,
    -7.97144
+  ]
+ },
+ "Olinda|Santa Tereza": {
+  "anel": [
+   [
+    -34.8592,
+    -8.02782
+   ],
+   [
+    -34.85569,
+    -8.02389
+   ],
+   [
+    -34.85316,
+    -8.02265
+   ]
+  ],
+  "centro": [
+   -34.85408,
+   -8.02324
   ]
  },
  "Olinda|Vila Popular": {
