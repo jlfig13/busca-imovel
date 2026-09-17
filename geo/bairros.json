@@ -319,6 +319,10 @@
    -8.46226
   ]
  },
+ "Ipojuca|Maracaipe": {
+  "anel": null,
+  "centro": null
+ },
  "Ipojuca|Merepe": {
   "anel": [
    [
@@ -338,6 +342,22 @@
  "Ipojuca|PE": {
   "anel": null,
   "centro": null
+ },
+ "Ipojuca|Salinas": {
+  "anel": [
+   [
+    -35.01142,
+    -8.50478
+   ],
+   [
+    -35.00788,
+    -8.50476
+   ]
+  ],
+  "centro": [
+   -35.00933,
+   -8.50478
+  ]
  },
  "Ipojuca|Vila de Porto de Galinhas": {
   "anel": null,
