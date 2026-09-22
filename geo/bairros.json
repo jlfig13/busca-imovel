@@ -2447,6 +2447,10 @@
    -8.09645
   ]
  },
+ "Recife|Ibura de Baixo": {
+  "anel": null,
+  "centro": null
+ },
  "Recife|Ilha Do Retiro": {
   "anel": null,
   "centro": null
@@ -2958,6 +2962,10 @@
    -34.88993,
    -8.04923
   ]
+ },
+ "Recife|Setúbal": {
+  "anel": null,
+  "centro": null
  },
  "Recife|Soledade": {
   "anel": [
