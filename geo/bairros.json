@@ -235,6 +235,22 @@
   "anel": null,
   "centro": null
  },
+ "Camaragibe|Bairro Novo do Carmelo": {
+  "anel": [
+   [
+    -34.97361,
+    -8.02525
+   ],
+   [
+    -34.97115,
+    -8.02203
+   ]
+  ],
+  "centro": [
+   -34.97262,
+   -8.02383
+  ]
+ },
  "Camaragibe|Celeiro das Alegrias Futuras": {
   "anel": null,
   "centro": null
