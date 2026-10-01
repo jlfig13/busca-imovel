@@ -63,6 +63,22 @@
   "anel": null,
   "centro": null
  },
+ "Cabo de Santo Agostinho|Centro": {
+  "anel": [
+   [
+    -35.03306,
+    -8.28992
+   ],
+   [
+    -35.03636,
+    -8.29032
+   ]
+  ],
+  "centro": [
+   -35.03479,
+   -8.29015
+  ]
+ },
  "Cabo de Santo Agostinho|Garapu": {
   "anel": [
    [
