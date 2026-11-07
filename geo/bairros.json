@@ -4143,6 +4143,22 @@
   "anel": null,
   "centro": null
  },
+ "Recife|Vasco da Gama": {
+  "anel": [
+   [
+    -34.91567,
+    -8.01183
+   ],
+   [
+    -34.91457,
+    -8.0099
+   ]
+  ],
+  "centro": [
+   -34.91513,
+   -8.01118
+  ]
+ },
  "Recife|Várzea": {
   "anel": [
    [
